@@ -1,4 +1,5 @@
 import os
+import stat
 import time
 import traceback
 import requests
@@ -43,6 +44,46 @@ CASH_RESERVE_RATIO = 0.05
 INCOME_THRESHOLD_USD = float(os.getenv("INCOME_THRESHOLD_USD", "100000"))
 QQQI_INCOME_RATIO = float(os.getenv("QQQI_INCOME_RATIO", "0.5"))
 
+# Rebalance: minimum deviation (fraction of equity) to trigger trades
+REBALANCE_THRESHOLD_RATIO = 0.01
+
+# Order pricing: limit buy premium above ask price
+LIMIT_BUY_PREMIUM = 1.005
+
+# Sell-to-buy delay: seconds to wait after sells before buying
+SELL_SETTLE_DELAY_SEC = 3
+
+# Allocation breakpoints by account size tier
+ALLOC_TIER1_BREAKPOINTS = [0, 15000, 30000, 70000]
+ALLOC_TIER1_VALUES = [1.0, 0.95, 0.85, 0.70]
+ALLOC_TIER2_BREAKPOINTS = [70000, 140000]
+ALLOC_TIER2_VALUES = [0.70, 0.50]
+
+# Risk parameters for large accounts (>140k)
+RISK_LEVERAGE_FACTOR = 3.0
+RISK_NUMERATOR = 0.30
+RISK_AGG_CAP = 0.50
+
+# ATR band scaling for entry/exit lines
+ATR_EXIT_SCALE = 2.0
+ATR_ENTRY_SCALE = 2.5
+EXIT_LINE_FLOOR = 0.92
+EXIT_LINE_CAP = 0.98
+ENTRY_LINE_FLOOR = 1.02
+ENTRY_LINE_CAP = 1.08
+
+
+def validate_config():
+    """Fail loudly at startup if required config is missing or invalid."""
+    missing = [v for v in ("SCHWAB_API_KEY", "SCHWAB_APP_SECRET") if not os.getenv(v)]
+    if missing:
+        raise EnvironmentError(f"Missing required env vars: {', '.join(missing)}")
+    if not (0.0 <= QQQI_INCOME_RATIO <= 1.0):
+        raise ValueError(f"QQQI_INCOME_RATIO must be in [0,1], got {QQQI_INCOME_RATIO}")
+
+
+validate_config()
+
 
 def send_tg_message(message):
     if not TG_TOKEN or not TG_CHAT_ID:
@@ -68,6 +109,7 @@ def get_schwab_client_init():
     raw_data = get_secret_from_gcp()
     with open(TOKEN_PATH, 'w') as f:
         f.write(raw_data)
+    os.chmod(TOKEN_PATH, stat.S_IRUSR | stat.S_IWUSR)  # 0o600: owner read/write only
     return auth.client_from_token_file(TOKEN_PATH, APP_KEY, APP_SECRET)
 
 
@@ -92,16 +134,16 @@ def safe_api_call(response, context="API"):
 
 
 def get_hybrid_allocation(total_equity_usd, qqq_p, stop_line):
-    if total_equity_usd <= 70000:
-        target_agg = float(np.interp(total_equity_usd, [0, 15000, 30000, 70000], [1.0, 0.95, 0.85, 0.70]))
-    elif total_equity_usd <= 140000:
-        target_agg = float(np.interp(total_equity_usd, [70000, 140000], [0.70, 0.50]))
+    if total_equity_usd <= ALLOC_TIER2_BREAKPOINTS[0]:
+        target_agg = float(np.interp(total_equity_usd, ALLOC_TIER1_BREAKPOINTS, ALLOC_TIER1_VALUES))
+    elif total_equity_usd <= ALLOC_TIER2_BREAKPOINTS[1]:
+        target_agg = float(np.interp(total_equity_usd, ALLOC_TIER2_BREAKPOINTS, ALLOC_TIER2_VALUES))
     else:
         if qqq_p <= stop_line:
             target_agg = 0.0
         else:
-            risk = max(0.01, (qqq_p - stop_line) / qqq_p * 3.0)
-            target_agg = min(0.50, 0.30 / risk)
+            risk = max(0.01, (qqq_p - stop_line) / qqq_p * RISK_LEVERAGE_FACTOR)
+            target_agg = min(RISK_AGG_CAP, RISK_NUMERATOR / risk)
     target_yield = max(0.0, 1.0 - target_agg)
     return target_agg, target_yield
 
@@ -146,8 +188,8 @@ def run_strategy_core(c, now_ny):
         abs(df_qqq['low'] - df_qqq['close'].shift(1))
     ], axis=1).max(axis=1)
     atr_pct = tr.rolling(14).mean().iloc[-1] / qqq_p
-    exit_line = ma200 * max(0.92, min(0.98, 1.0 - (atr_pct * 2.0)))
-    entry_line = ma200 * max(1.02, min(1.08, 1.0 + (atr_pct * 2.5)))
+    exit_line = ma200 * max(EXIT_LINE_FLOOR, min(EXIT_LINE_CAP, 1.0 - (atr_pct * ATR_EXIT_SCALE)))
+    entry_line = ma200 * max(ENTRY_LINE_FLOOR, min(ENTRY_LINE_CAP, 1.0 + (atr_pct * ATR_ENTRY_SCALE)))
 
     # Account snapshot (strategy symbols only)
     raw_acct_nums = c.get_account_numbers()
@@ -199,7 +241,7 @@ def run_strategy_core(c, now_ny):
 
     target_tqqq_val = strategy_equity * target_tqqq_ratio
     target_boxx_val = max(0.0, (strategy_equity - reserved) - target_tqqq_val)
-    threshold = total_equity * 0.01
+    threshold = total_equity * REBALANCE_THRESHOLD_RATIO
 
     dashboard = (
         f"Equity ${total_equity:,.2f} | TQQQ ${mv['TQQQ']:,.2f} SPYI ${mv['SPYI']:,.2f} QQQI ${mv['QQQI']:,.2f} BOXX ${mv['BOXX']:,.2f} | "
@@ -209,12 +251,19 @@ def run_strategy_core(c, now_ny):
     # Quotes and order execution
     raw_quotes = c.get_quotes(strategy_symbols)
     quotes_data = safe_api_call(raw_quotes, "Quotes")
-    quotes = {sym: quotes_data[sym]['quote'] for sym in strategy_symbols}
+    quotes = {}
+    for sym in strategy_symbols:
+        if sym not in quotes_data or 'quote' not in quotes_data[sym]:
+            raise Exception(f"Missing quote data for {sym}")
+        q = quotes_data[sym]['quote']
+        if 'lastPrice' not in q or 'askPrice' not in q:
+            raise Exception(f"Incomplete quote for {sym}: missing lastPrice or askPrice")
+        quotes[sym] = q
     trade_logs = []
 
     def execute_fire_forget(symbol, action_type, quantity, price=None):
         if quantity <= 0:
-            return
+            return False
         try:
             p_str = "{:.2f}".format(price) if price else None
             if action_type == 'SELL':
@@ -227,15 +276,22 @@ def run_strategy_core(c, now_ny):
                 order = equity_buy_market(symbol, quantity)
                 label = f"BUY_MKT {symbol}"
             else:
-                return
+                return False
             resp = c.place_order(acct_hash, order)
             success, info = check_submission(resp, symbol)
             if success:
                 trade_logs.append(f"OK {label} qty={quantity} id={info}")
+                return True
             else:
-                trade_logs.append(f"FAIL {label} {info}")
+                msg = f"FAIL {label} {info}"
+                trade_logs.append(msg)
+                send_tg_message(f"Order failed: {msg}")
+                return False
         except Exception as e:
-            trade_logs.append(f"ERR {symbol} {e}")
+            msg = f"ERR {symbol} {action_type} qty={quantity}: {e}"
+            trade_logs.append(msg)
+            send_tg_message(f"Order error: {msg}")
+            return False
 
     # Sell phase
     sell_executed = False
@@ -257,7 +313,7 @@ def run_strategy_core(c, now_ny):
         sell_executed = True
 
     if sell_executed:
-        time.sleep(3)
+        time.sleep(SELL_SETTLE_DELAY_SEC)
 
     # Buy phase
     est_buying_power = max(0, real_buying_power - reserved)
@@ -268,7 +324,7 @@ def run_strategy_core(c, now_ny):
                 ask = quotes[sym]['askPrice']
                 q = int(amt_to_spend // ask)
                 if q > 0:
-                    limit_p = round(ask * 1.005, 2)
+                    limit_p = round(ask * LIMIT_BUY_PREMIUM, 2)
                     execute_fire_forget(sym, 'BUY_LIMIT', q, limit_p)
                     est_buying_power -= (q * limit_p)
 
