@@ -72,6 +72,90 @@ EXIT_LINE_CAP = 0.98
 ENTRY_LINE_FLOOR = 1.02
 ENTRY_LINE_CAP = 1.08
 
+# ---------------------------------------------------------------------------
+# Language / i18n
+# ---------------------------------------------------------------------------
+NOTIFY_LANG = os.getenv("NOTIFY_LANG", "en")
+
+SIGNAL_ICONS = {
+    "hold":   "💎",
+    "entry":  "🚀",
+    "reduce": "⚠️",
+    "exit":   "🔴",
+    "idle":   "💤",
+}
+
+I18N = {
+    "zh": {
+        "trade_header":      "🔔 【交易执行报告】",
+        "heartbeat_header":  "💓 【心跳检测】",
+        "error_header":      "🚨 【策略异常】",
+        "signal_label":      "信号",
+        "dashboard_label":   "📊 资产看板",
+        "equity":            "净值",
+        "buying_power":      "购买力",
+        "no_trades":         "✅ 无需调仓",
+        "separator":         "━━━━━━━━━━━━━━━━━━",
+        "signal_hold":       "趋势持有",
+        "signal_entry":      "入场信号",
+        "signal_reduce":     "减仓信号",
+        "signal_exit":       "离场信号",
+        "signal_idle":       "等待信号",
+        "limit_buy":         "限价买入",
+        "market_buy":        "市价买入",
+        "market_sell":       "市价卖出",
+        "shares":            "股",
+        "submitted":         "已下发",
+        "failed":            "失败",
+        "exception":         "异常",
+        "buy_label":         "买入",
+        "limit_buy_cmd":     "限价买入指令",
+        "market_buy_cmd":    "市价买入指令",
+        "market_sell_cmd":   "市价卖出指令",
+    },
+    "en": {
+        "trade_header":      "🔔 【Trade Execution Report】",
+        "heartbeat_header":  "💓 【Heartbeat】",
+        "error_header":      "🚨 【Strategy Error】",
+        "signal_label":      "Signal",
+        "dashboard_label":   "📊 Dashboard",
+        "equity":            "Equity",
+        "buying_power":      "Buying Power",
+        "no_trades":         "✅ No rebalance needed",
+        "separator":         "━━━━━━━━━━━━━━━━━━",
+        "signal_hold":       "Trend Hold",
+        "signal_entry":      "Entry Signal",
+        "signal_reduce":     "Reduce Signal",
+        "signal_exit":       "Exit Signal",
+        "signal_idle":       "Idle",
+        "limit_buy":         "Limit Buy",
+        "market_buy":        "Market Buy",
+        "market_sell":       "Market Sell",
+        "shares":            " shares",
+        "submitted":         "submitted",
+        "failed":            "failed",
+        "exception":         "error",
+        "buy_label":         "Buy",
+        "limit_buy_cmd":     "Limit Buy",
+        "market_buy_cmd":    "Market Buy",
+        "market_sell_cmd":   "Market Sell",
+    },
+}
+
+
+def t(key, **kwargs):
+    """Return translated string for the current LANG setting."""
+    lang = NOTIFY_LANG if NOTIFY_LANG in I18N else "en"
+    template = I18N[lang].get(key, key)
+    return template.format(**kwargs) if kwargs else template
+
+
+def signal_text(icon_key):
+    """Return the emoji + translated signal name, e.g. '💎 趋势持有'."""
+    emoji = SIGNAL_ICONS.get(icon_key, "❓")
+    name = t(f"signal_{icon_key}")
+    return f"{emoji} {name}"
+
 
 def validate_config():
     """Fail loudly at startup if required config is missing or invalid."""
@@ -243,9 +327,13 @@ def run_strategy_core(c, now_ny):
     target_boxx_val = max(0.0, (strategy_equity - reserved) - target_tqqq_val)
     threshold = total_equity * REBALANCE_THRESHOLD_RATIO
 
+    sig_display = signal_text(icon)
+    sep = t("separator")
     dashboard = (
-        f"Equity ${total_equity:,.2f} | TQQQ ${mv['TQQQ']:,.2f} SPYI ${mv['SPYI']:,.2f} QQQI ${mv['QQQI']:,.2f} BOXX ${mv['BOXX']:,.2f} | "
-        f"Signal {icon} {reason} | QQQ {qqq_p:.2f} MA200 {ma200:.2f} Exit {exit_line:.2f}"
+        f"{t('dashboard_label')} | {t('equity')}: ${total_equity:,.2f}\n"
+        f"TQQQ: ${mv['TQQQ']:,.2f} | SPYI: ${mv['SPYI']:,.2f} | QQQI: ${mv['QQQI']:,.2f} | BOXX: ${mv['BOXX']:,.2f}\n"
+        f"{t('buying_power')}: ${real_buying_power:,.2f} | {t('signal_label')}: {sig_display}\n"
+        f"QQQ: {qqq_p:.2f} | MA200: {ma200:.2f} | Exit: {exit_line:.2f}"
     )
 
     # Quotes and order execution
@@ -268,29 +356,42 @@ def run_strategy_core(c, now_ny):
             p_str = "{:.2f}".format(price) if price else None
             if action_type == 'SELL':
                 order = equity_sell_market(symbol, quantity)
-                label = f"SELL {symbol}"
             elif action_type == 'BUY_LIMIT':
                 order = equity_buy_limit(symbol, quantity, p_str)
-                label = f"BUY_LIMIT {symbol} @ {p_str}"
             elif action_type == 'BUY_MARKET':
                 order = equity_buy_market(symbol, quantity)
-                label = f"BUY_MKT {symbol}"
             else:
                 return False
             resp = c.place_order(acct_hash, order)
             success, info = check_submission(resp, symbol)
             if success:
-                trade_logs.append(f"OK {label} qty={quantity} id={info}")
+                if action_type == 'SELL':
+                    trade_logs.append(
+                        f"✅ 📉 {t('market_sell_cmd')} {symbol}: {quantity}{t('shares')} (ID: {info})"
+                    )
+                elif action_type == 'BUY_LIMIT':
+                    trade_logs.append(
+                        f"✅ 💰 {t('limit_buy_cmd')} {symbol} (${p_str}): {quantity}{t('shares')} {t('submitted')} (ID: {info})"
+                    )
+                elif action_type == 'BUY_MARKET':
+                    trade_logs.append(
+                        f"✅ 📈 {t('market_buy_cmd')} {symbol}: {quantity}{t('shares')} (ID: {info})"
+                    )
                 return True
             else:
-                msg = f"FAIL {label} {info}"
+                if action_type == 'SELL':
+                    msg = f"❌ {t('market_sell')} {symbol}: {quantity}{t('shares')} {t('failed')} - {info}"
+                elif action_type == 'BUY_LIMIT':
+                    msg = f"❌ {t('limit_buy')} {symbol}: {quantity}{t('shares')} {t('failed')} - {info}"
+                else:
+                    msg = f"❌ {t('market_buy')} {symbol}: {quantity}{t('shares')} {t('failed')} - {info}"
                 trade_logs.append(msg)
-                send_tg_message(f"Order failed: {msg}")
+                send_tg_message(msg)
                 return False
         except Exception as e:
-            msg = f"ERR {symbol} {action_type} qty={quantity}: {e}"
+            msg = f"🚨 {symbol} {t('buy_label')} {quantity}{t('shares')} {t('exception')}: {e}"
             trade_logs.append(msg)
-            send_tg_message(f"Order error: {msg}")
+            send_tg_message(msg)
             return False
 
     # Sell phase
@@ -334,17 +435,26 @@ def run_strategy_core(c, now_ny):
             execute_fire_forget('BOXX', 'BUY_MARKET', q)
 
     if trade_logs:
-        send_tg_message(f"Trades\n{dashboard}\n" + "\n".join(trade_logs))
+        trade_msg = (
+            f"{t('trade_header')}\n"
+            f"📊 {t('signal_label')}: {sig_display}\n\n"
+            f"{dashboard}\n"
+            f"{sep}\n"
+            + "\n".join(trade_logs)
+        )
+        send_tg_message(trade_msg)
     else:
         no_trade_msg = (
-            f"Heartbeat\n"
-            f"Equity: ${total_equity:,.2f}\n"
+            f"{t('heartbeat_header')}\n"
+            f"💰 {t('equity')}: ${total_equity:,.2f}\n"
+            f"{sep}\n"
             f"TQQQ: ${mv['TQQQ']:,.2f}  BOXX: ${mv['BOXX']:,.2f}\n"
             f"QQQI: ${mv['QQQI']:,.2f}  SPYI: ${mv['SPYI']:,.2f}\n"
-            f"Signal: {icon} {reason}\n"
-            f"QQQ: {qqq_p:.2f}  MA200: {ma200:.2f}  Exit: {exit_line:.2f}\n"
-            f"---\n"
-            f"No trades needed"
+            f"{sep}\n"
+            f"🎯 {t('signal_label')}: {sig_display}\n"
+            f"QQQ: {qqq_p:.2f} | MA200: {ma200:.2f} | Exit: {exit_line:.2f}\n"
+            f"{sep}\n"
+            f"{t('no_trades')}"
         )
         print(no_trade_msg, flush=True)
         send_tg_message(no_trade_msg)
@@ -363,7 +473,7 @@ def handle_schwab():
         run_strategy_core(c, now_ny)
         return "OK", 200
     except Exception:
-        send_tg_message(f"Error\n{traceback.format_exc()}")
+        send_tg_message(f"{t('error_header')}\n{traceback.format_exc()}")
         return "Error", 500
 
 
