@@ -36,8 +36,6 @@ jobs:
           required_vars=(
             CLOUD_RUN_REGION
             CLOUD_RUN_SERVICE
-            INCOME_THRESHOLD_USD
-            QQQI_INCOME_RATIO
             GLOBAL_TELEGRAM_CHAT_ID
             NOTIFY_LANG
             GCP_SA_KEY
@@ -87,9 +85,15 @@ jobs:
             "NOTIFY_LANG=${NOTIFY_LANG}"
             "SCHWAB_API_KEY=${SCHWAB_API_KEY}"
             "SCHWAB_APP_SECRET=${SCHWAB_APP_SECRET}"
-            "INCOME_THRESHOLD_USD=${INCOME_THRESHOLD_USD}"
-            "QQQI_INCOME_RATIO=${QQQI_INCOME_RATIO}"
           )
+
+          if [ -n "${INCOME_THRESHOLD_USD:-}" ]; then
+            env_args+=("INCOME_THRESHOLD_USD=${INCOME_THRESHOLD_USD}")
+          fi
+
+          if [ -n "${QQQI_INCOME_RATIO:-}" ]; then
+            env_args+=("QQQI_INCOME_RATIO=${QQQI_INCOME_RATIO}")
+          fi
 
           if [ -n "${GOOGLE_CLOUD_PROJECT:-}" ]; then
             env_args+=("GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}")
