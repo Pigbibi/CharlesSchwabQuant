@@ -97,6 +97,35 @@ QQQ: 600.64 | MA200: 580.62 | Exit: 558.97
 
 Only `GLOBAL_TELEGRAM_CHAT_ID` and `NOTIFY_LANG` are good candidates for cross-project sharing. `TELEGRAM_TOKEN`, Schwab API credentials, and other runtime secrets should remain repository-specific.
 
+### GitHub-managed Cloud Run env sync
+
+If code deployment still uses Google Cloud Trigger, but you want GitHub to be the single source of truth for runtime env vars, this repo now includes `.github/workflows/sync-cloud-run-env.yml`.
+
+Recommended setup:
+
+- **Repository Variables**
+  - `ENABLE_GITHUB_ENV_SYNC` = `true`
+  - `CLOUD_RUN_REGION`
+  - `CLOUD_RUN_SERVICE`
+  - `INCOME_THRESHOLD_USD`
+  - `QQQI_INCOME_RATIO`
+  - Optional: `GOOGLE_CLOUD_PROJECT`
+- **Repository Secrets**
+  - `GCP_SA_KEY`
+  - `TELEGRAM_TOKEN`
+  - `SCHWAB_API_KEY`
+  - `SCHWAB_APP_SECRET`
+- **Shared Variables already supported**
+  - `GLOBAL_TELEGRAM_CHAT_ID`
+  - `NOTIFY_LANG`
+
+On every push to `main`, the workflow updates the existing Cloud Run service with the values above. It does **not** remove legacy `TELEGRAM_CHAT_ID`, so existing deployments keep working. Once you have confirmed the service is reading `GLOBAL_TELEGRAM_CHAT_ID` as intended, you can remove `TELEGRAM_CHAT_ID` from Cloud Run manually.
+
+Important:
+
+- The workflow only becomes strict when `ENABLE_GITHUB_ENV_SYNC=true`. If this variable is unset, the sync job is skipped and the old Google Cloud Trigger + manual Cloud Run env setup keeps working.
+- `GCP_SA_KEY`, `TELEGRAM_TOKEN`, and the Schwab API credentials remain repository-specific. Across multiple quant repos, only `GLOBAL_TELEGRAM_CHAT_ID` and `NOTIFY_LANG` are good cross-project shared settings.
+
 Deploy as a Cloud Run service and trigger the root URL on a schedule (e.g. once per trading day). Entry point: Flask route `"/"` in `main.py`.
 
 ---
@@ -188,5 +217,34 @@ QQQ: 600.64 | MA200: 580.62 | Exit: 558.97
 | `NOTIFY_LANG` | 通知语言: `en`（英文，默认）或 `zh`（中文） |
 
 如果你在多个 quant 仓库之间保留一层共享配置，通常只建议共享 `GLOBAL_TELEGRAM_CHAT_ID` 和 `NOTIFY_LANG`。`TELEGRAM_TOKEN`、Schwab API key 这些仍然应该由这个仓库自己管理。
+
+### GitHub 统一管理 Cloud Run 环境变量
+
+如果代码部署继续走 Google Cloud Trigger，但你想把运行时环境变量统一放在 GitHub 管理，这个仓库现在提供了 `.github/workflows/sync-cloud-run-env.yml`。
+
+推荐配置方式：
+
+- **仓库级 Variables**
+  - `ENABLE_GITHUB_ENV_SYNC` = `true`
+  - `CLOUD_RUN_REGION`
+  - `CLOUD_RUN_SERVICE`
+  - `INCOME_THRESHOLD_USD`
+  - `QQQI_INCOME_RATIO`
+  - 可选：`GOOGLE_CLOUD_PROJECT`
+- **仓库级 Secrets**
+  - `GCP_SA_KEY`
+  - `TELEGRAM_TOKEN`
+  - `SCHWAB_API_KEY`
+  - `SCHWAB_APP_SECRET`
+- **已支持的共享 Variables**
+  - `GLOBAL_TELEGRAM_CHAT_ID`
+  - `NOTIFY_LANG`
+
+每次 push 到 `main` 时，这个 workflow 会把上面这些值同步到现有 Cloud Run 服务里。它**不会主动删除**旧的 `TELEGRAM_CHAT_ID`，这样现有部署不会被硬切断。等你确认服务已经按预期读取 `GLOBAL_TELEGRAM_CHAT_ID` 后，再手动删除旧的 Cloud Run env 即可。
+
+注意：
+
+- 只有在 `ENABLE_GITHUB_ENV_SYNC=true` 时，这个 workflow 才会严格校验并执行同步。没打开时会直接跳过，不影响原来 Google Cloud Trigger + 手工 Cloud Run env 的老流程。
+- `GCP_SA_KEY`、`TELEGRAM_TOKEN`、Schwab API 凭据仍然是这个仓库自己的 secrets。对多个 quant 仓库来说，真正适合跨项目共享的通常只有 `GLOBAL_TELEGRAM_CHAT_ID` 和 `NOTIFY_LANG`。
 
 部署为 Cloud Run 服务，定时触发根 URL（如每交易日一次）。入口：`main.py` 中的 Flask 路由 `"/"`。

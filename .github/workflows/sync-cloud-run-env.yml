@@ -1,0 +1,100 @@
+name: Sync Cloud Run Env
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  sync-cloud-run-env:
+    name: Sync Cloud Run Env
+    runs-on: ubuntu-latest
+    env:
+      ENABLE_GITHUB_ENV_SYNC: ${{ vars.ENABLE_GITHUB_ENV_SYNC }}
+      CLOUD_RUN_REGION: ${{ vars.CLOUD_RUN_REGION }}
+      CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+      GOOGLE_CLOUD_PROJECT: ${{ vars.GOOGLE_CLOUD_PROJECT }}
+      INCOME_THRESHOLD_USD: ${{ vars.INCOME_THRESHOLD_USD }}
+      QQQI_INCOME_RATIO: ${{ vars.QQQI_INCOME_RATIO }}
+      GLOBAL_TELEGRAM_CHAT_ID: ${{ vars.GLOBAL_TELEGRAM_CHAT_ID }}
+      NOTIFY_LANG: ${{ vars.NOTIFY_LANG }}
+      GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      SCHWAB_API_KEY: ${{ secrets.SCHWAB_API_KEY }}
+      SCHWAB_APP_SECRET: ${{ secrets.SCHWAB_APP_SECRET }}
+    steps:
+      - name: Check whether env sync is configured
+        id: config
+        run: |
+          set -euo pipefail
+
+          if [ "${ENABLE_GITHUB_ENV_SYNC:-}" != "true" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping Cloud Run env sync because ENABLE_GITHUB_ENV_SYNC is not set to true." >&2
+            exit 0
+          fi
+
+          required_vars=(
+            CLOUD_RUN_REGION
+            CLOUD_RUN_SERVICE
+            INCOME_THRESHOLD_USD
+            QQQI_INCOME_RATIO
+            GLOBAL_TELEGRAM_CHAT_ID
+            NOTIFY_LANG
+            GCP_SA_KEY
+            TELEGRAM_TOKEN
+            SCHWAB_API_KEY
+            SCHWAB_APP_SECRET
+          )
+
+          missing_vars=()
+          for var_name in "${required_vars[@]}"; do
+            if [ -z "${!var_name:-}" ]; then
+              missing_vars+=("${var_name}")
+            fi
+          done
+
+          if [ "${#missing_vars[@]}" -gt 0 ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Cloud Run env sync is enabled, but these values are missing:" >&2
+            printf '  - %s\n' "${missing_vars[@]}" >&2
+            exit 1
+          fi
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        if: steps.config.outputs.enabled == 'true'
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ env.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        if: steps.config.outputs.enabled == 'true'
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ steps.auth.outputs.project_id }}
+          version: ">= 416.0.0"
+
+      - name: Sync Cloud Run environment
+        if: steps.config.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+
+          env_args=(
+            "TELEGRAM_TOKEN=${TELEGRAM_TOKEN}"
+            "GLOBAL_TELEGRAM_CHAT_ID=${GLOBAL_TELEGRAM_CHAT_ID}"
+            "NOTIFY_LANG=${NOTIFY_LANG}"
+            "SCHWAB_API_KEY=${SCHWAB_API_KEY}"
+            "SCHWAB_APP_SECRET=${SCHWAB_APP_SECRET}"
+            "INCOME_THRESHOLD_USD=${INCOME_THRESHOLD_USD}"
+            "QQQI_INCOME_RATIO=${QQQI_INCOME_RATIO}"
+          )
+
+          if [ -n "${GOOGLE_CLOUD_PROJECT:-}" ]; then
+            env_args+=("GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}")
+          fi
+
+          gcloud run services update "${CLOUD_RUN_SERVICE}" \
+            --region "${CLOUD_RUN_REGION}" \
+            --update-env-vars "$(IFS=,; echo "${env_args[*]}")"
