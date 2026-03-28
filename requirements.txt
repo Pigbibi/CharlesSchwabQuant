@@ -1,5 +1,6 @@
 flask
 gunicorn
+quant-platform-kit @ git+https://github.com/QuantStrategyLab/QuantPlatformKit.git@v0.2.0
 pandas
 requests
 pandas_market_calendars

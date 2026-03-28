@@ -10,6 +10,9 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+PLATFORM_KIT_SRC = ROOT.parent / "QuantPlatformKit" / "src"
+if str(PLATFORM_KIT_SRC) not in sys.path:
+    sys.path.insert(0, str(PLATFORM_KIT_SRC))
 
 
 def install_stub_modules():

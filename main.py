@@ -1,9 +1,7 @@
 import os
-import stat
 import time
 import traceback
 import requests
-import json
 import numpy as np
 import pandas as pd
 import pytz
@@ -12,13 +10,14 @@ from datetime import datetime
 from flask import Flask
 import google.auth
 
-from schwab import auth, client
-from schwab.orders.equities import equity_buy_market, equity_sell_market, equity_buy_limit
-
-try:
-    import google.cloud.secretmanager_v1 as secret_manager
-except ImportError:
-    from google.cloud import secret_manager
+from quant_platform_kit.common.models import OrderIntent
+from quant_platform_kit.schwab import (
+    fetch_account_snapshot,
+    fetch_default_daily_price_history_candles,
+    fetch_quotes,
+    get_client_from_secret,
+    submit_equity_order,
+)
 
 app = Flask(__name__)
 
@@ -179,44 +178,6 @@ def send_tg_message(message):
         print(f"Telegram send failed: {e}", flush=True)
 
 
-# ---------------------------------------------------------------------------
-# GCP Secret Manager and Schwab client
-# ---------------------------------------------------------------------------
-def get_secret_from_gcp():
-    client_sm = secret_manager.SecretManagerServiceClient()
-    name = f"projects/{PROJECT_ID}/secrets/{SECRET_ID}/versions/latest"
-    response = client_sm.access_secret_version(request={"name": name})
-    return response.payload.data.decode("UTF-8")
-
-
-def get_schwab_client_init():
-    raw_data = get_secret_from_gcp()
-    with open(TOKEN_PATH, 'w') as f:
-        f.write(raw_data)
-    os.chmod(TOKEN_PATH, stat.S_IRUSR | stat.S_IWUSR)  # 0o600: owner read/write only
-    return auth.client_from_token_file(TOKEN_PATH, APP_KEY, APP_SECRET)
-
-
-# ---------------------------------------------------------------------------
-# API helpers
-# ---------------------------------------------------------------------------
-def check_submission(resp, symbol):
-    if resp.status_code in [200, 201]:
-        location = resp.headers.get('Location', '')
-        order_id = location.split('/')[-1] if location else None
-        return True, order_id
-    return False, f"{resp.status_code} {resp.text}"
-
-
-def safe_api_call(response, context="API"):
-    if response.status_code not in (200, 201):
-        raise Exception(f"{context} failed: {response.status_code} {response.text}")
-    try:
-        return response.json()
-    except json.JSONDecodeError:
-        raise Exception(f"{context} invalid JSON: {response.text}")
-
-
 def get_hybrid_allocation(total_equity_usd, qqq_p, stop_line):
     if total_equity_usd <= ALLOC_TIER2_BREAKPOINTS[0]:
         target_agg = float(np.interp(total_equity_usd, ALLOC_TIER1_BREAKPOINTS, ALLOC_TIER1_VALUES))
@@ -253,16 +214,7 @@ def get_income_ratio(total_equity_usd: float) -> float:
 # ---------------------------------------------------------------------------
 def run_strategy_core(c, now_ny):
     # Fetch QQQ history
-    raw_resp_qqq = c.get_price_history('QQQ',
-        period_type=client.Client.PriceHistory.PeriodType.YEAR,
-        period=client.Client.PriceHistory.Period.TWO_YEARS,
-        frequency_type=client.Client.PriceHistory.FrequencyType.DAILY,
-        frequency=client.Client.PriceHistory.Frequency.DAILY)
-    resp_qqq = safe_api_call(raw_resp_qqq, "QQQ history")
-    if 'candles' not in resp_qqq:
-        raise Exception(f"QQQ response missing candles: {resp_qqq}")
-
-    df_qqq = pd.DataFrame(resp_qqq['candles'])
+    df_qqq = pd.DataFrame(fetch_default_daily_price_history_candles(c, 'QQQ'))
     qqq_p = df_qqq['close'].iloc[-1]
     ma200 = df_qqq['close'].rolling(200).mean().iloc[-1]
 
@@ -276,29 +228,20 @@ def run_strategy_core(c, now_ny):
     entry_line = ma200 * max(ENTRY_LINE_FLOOR, min(ENTRY_LINE_CAP, 1.0 + (atr_pct * ATR_ENTRY_SCALE)))
 
     # Account snapshot (strategy symbols only)
-    raw_acct_nums = c.get_account_numbers()
-    acct_hash = safe_api_call(raw_acct_nums, "Account numbers")[0]['hashValue']
     strategy_symbols = ["TQQQ", "BOXX", "SPYI", "QQQI"]
-
-    raw_acc_resp = c.get_account(acct_hash, fields=client.Client.Account.Fields.POSITIONS)
-    acc_resp = safe_api_call(raw_acc_resp, "Account positions")
-    acc = acc_resp['securitiesAccount']
-    current_bal = acc.get('currentBalances', {})
-
-    cash_for_equity = float(current_bal.get('cashAvailableForTrading', 0.0))
-    raw_withdrawable = float(current_bal.get('cashAvailableForWithdrawal', 0.0))
-    real_buying_power = max(0.0, raw_withdrawable)
+    snapshot = fetch_account_snapshot(c, strategy_symbols=strategy_symbols)
+    acct_hash = snapshot.metadata['account_hash']
+    cash_for_equity = float(snapshot.metadata.get('cash_available_for_trading', 0.0))
+    real_buying_power = float(snapshot.buying_power or 0.0)
 
     mv = {s: 0.0 for s in strategy_symbols}
     qty = {s: 0 for s in strategy_symbols}
-    if 'positions' in acc:
-        for p in acc['positions']:
-            s = p['instrument']['symbol']
-            if s in mv:
-                mv[s] = float(p['marketValue'])
-                qty[s] = int(p['longQuantity'])
+    for position in snapshot.positions:
+        if position.symbol in mv:
+            mv[position.symbol] = float(position.market_value)
+            qty[position.symbol] = int(position.quantity)
 
-    total_equity = cash_for_equity + sum(mv.values())
+    total_equity = snapshot.total_equity
 
     # Income layer: target size from total equity only
     income_ratio = get_income_ratio(total_equity)
@@ -337,16 +280,14 @@ def run_strategy_core(c, now_ny):
     )
 
     # Quotes and order execution
-    raw_quotes = c.get_quotes(strategy_symbols)
-    quotes_data = safe_api_call(raw_quotes, "Quotes")
-    quotes = {}
-    for sym in strategy_symbols:
-        if sym not in quotes_data or 'quote' not in quotes_data[sym]:
-            raise Exception(f"Missing quote data for {sym}")
-        q = quotes_data[sym]['quote']
-        if 'lastPrice' not in q or 'askPrice' not in q:
-            raise Exception(f"Incomplete quote for {sym}: missing lastPrice or askPrice")
-        quotes[sym] = q
+    quote_snapshots = fetch_quotes(c, strategy_symbols)
+    quotes = {
+        sym: {
+            'lastPrice': quote_snapshots[sym].last_price,
+            'askPrice': quote_snapshots[sym].ask_price or quote_snapshots[sym].last_price,
+        }
+        for sym in strategy_symbols
+    }
     trade_logs = []
 
     def execute_fire_forget(symbol, action_type, quantity, price=None):
@@ -355,15 +296,22 @@ def run_strategy_core(c, now_ny):
         try:
             p_str = "{:.2f}".format(price) if price else None
             if action_type == 'SELL':
-                order = equity_sell_market(symbol, quantity)
+                order_intent = OrderIntent(symbol=symbol, side='sell', quantity=quantity)
             elif action_type == 'BUY_LIMIT':
-                order = equity_buy_limit(symbol, quantity, p_str)
+                order_intent = OrderIntent(
+                    symbol=symbol,
+                    side='buy',
+                    quantity=quantity,
+                    order_type='limit',
+                    limit_price=float(price),
+                )
             elif action_type == 'BUY_MARKET':
-                order = equity_buy_market(symbol, quantity)
+                order_intent = OrderIntent(symbol=symbol, side='buy', quantity=quantity)
             else:
                 return False
-            resp = c.place_order(acct_hash, order)
-            success, info = check_submission(resp, symbol)
+            report = submit_equity_order(c, acct_hash, order_intent)
+            success = report.status == "accepted"
+            info = report.broker_order_id if success else report.raw_payload.get("detail", report.status)
             if success:
                 if action_type == 'SELL':
                     trade_logs.append(
@@ -463,7 +411,7 @@ def run_strategy_core(c, now_ny):
 @app.route("/", methods=["POST", "GET"])
 def handle_schwab():
     try:
-        c = get_schwab_client_init()
+        c = get_client_from_secret(PROJECT_ID, SECRET_ID, APP_KEY, APP_SECRET, token_path=TOKEN_PATH)
         tz_ny = pytz.timezone('America/New_York')
         now_ny = datetime.now(tz_ny)
         nyse = mcal.get_calendar('NASDAQ')

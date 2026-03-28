@@ -14,6 +14,8 @@
 
 Automated trading service for Charles Schwab accounts, deployed on GCP Cloud Run. Allocates capital across three layers: **attack (TQQQ)** driven by QQQ MA200 + ATR bands with staged exits, **income (SPYI / QQQI)** when equity exceeds a threshold, and **defense (BOXX)** for idle cash. Each run fetches data, computes targets, places orders, and notifies via Telegram.
 
+The strategy repo now depends on `QuantPlatformKit` for Schwab-specific client bootstrap, account snapshot access, market-data access, and order submission. Cloud Run still deploys this strategy repo only.
+
 ### Logic overview
 
 - **Data**: QQQ (signals), TQQQ, SPYI, QQQI, BOXX; daily. Indicators: 200-day SMA (MA200), 14-day ATR%.
@@ -134,6 +136,8 @@ Deploy as a Cloud Run service and trigger the root URL on a schedule (e.g. once 
 ## 中文
 
 基于 Charles Schwab 账户的自动化交易服务，部署在 GCP Cloud Run 上。资金分配为三层：**进攻层 (TQQQ)** 基于 QQQ MA200 + ATR 波段分阶段退出，**收入层 (SPYI / QQQI)** 在资产超过阈值时启用，**防御层 (BOXX)** 管理闲置资金。每次运行获取数据、计算目标、下单并通过 Telegram 通知。
+
+这个策略仓库现在通过 `QuantPlatformKit` 复用 Schwab 的 client 初始化、账户快照、行情读取和下单逻辑。Cloud Run 仍然只部署这个策略仓库本身。
 
 ### 策略概览
 
