@@ -95,6 +95,8 @@ QQQ: 600.64 | MA200: 580.62 | Exit: 558.97
 | `QQQI_INCOME_RATIO` | QQQI share of income layer, 0–1 (default 0.5) |
 | `NOTIFY_LANG` | Notification language: `en` (English, default) or `zh` (Chinese) |
 
+Only `GLOBAL_TELEGRAM_CHAT_ID` and `NOTIFY_LANG` are good candidates for cross-project sharing. `TELEGRAM_TOKEN`, Schwab API credentials, and other runtime secrets should remain repository-specific.
+
 Deploy as a Cloud Run service and trigger the root URL on a schedule (e.g. once per trading day). Entry point: Flask route `"/"` in `main.py`.
 
 ---
@@ -184,5 +186,7 @@ QQQ: 600.64 | MA200: 580.62 | Exit: 558.97
 | `INCOME_THRESHOLD_USD` | 收入层启动阈值（默认 100000） |
 | `QQQI_INCOME_RATIO` | QQQI 在收入层中的占比，0–1（默认 0.5） |
 | `NOTIFY_LANG` | 通知语言: `en`（英文，默认）或 `zh`（中文） |
+
+如果你在多个 quant 仓库之间保留一层共享配置，通常只建议共享 `GLOBAL_TELEGRAM_CHAT_ID` 和 `NOTIFY_LANG`。`TELEGRAM_TOKEN`、Schwab API key 这些仍然应该由这个仓库自己管理。
 
 部署为 Cloud Run 服务，定时触发根 URL（如每交易日一次）。入口：`main.py` 中的 Flask 路由 `"/"`。
