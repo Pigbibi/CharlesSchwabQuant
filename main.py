@@ -1,11 +1,11 @@
 import os
 import traceback
-import requests
 from flask import Flask
 import google.auth
 
 from application.rebalance_service import run_strategy_core as run_rebalance_cycle
 from entrypoints.cloud_run import is_market_open_today
+from notifications.telegram import build_sender, build_signal_text, build_translator
 from quant_platform_kit.schwab import (
     fetch_account_snapshot,
     fetch_default_daily_price_history_candles,
@@ -74,85 +74,8 @@ ENTRY_LINE_CAP = 1.08
 # Language / i18n
 # ---------------------------------------------------------------------------
 NOTIFY_LANG = os.getenv("NOTIFY_LANG", "en")
-
-SIGNAL_ICONS = {
-    "hold":   "💎",
-    "entry":  "🚀",
-    "reduce": "⚠️",
-    "exit":   "🔴",
-    "idle":   "💤",
-}
-
-I18N = {
-    "zh": {
-        "trade_header":      "🔔 【交易执行报告】",
-        "heartbeat_header":  "💓 【心跳检测】",
-        "error_header":      "🚨 【策略异常】",
-        "signal_label":      "信号",
-        "dashboard_label":   "📊 资产看板",
-        "equity":            "净值",
-        "buying_power":      "购买力",
-        "no_trades":         "✅ 无需调仓",
-        "separator":         "━━━━━━━━━━━━━━━━━━",
-        "signal_hold":       "趋势持有",
-        "signal_entry":      "入场信号",
-        "signal_reduce":     "减仓信号",
-        "signal_exit":       "离场信号",
-        "signal_idle":       "等待信号",
-        "limit_buy":         "限价买入",
-        "market_buy":        "市价买入",
-        "market_sell":       "市价卖出",
-        "shares":            "股",
-        "submitted":         "已下发",
-        "failed":            "失败",
-        "exception":         "异常",
-        "buy_label":         "买入",
-        "limit_buy_cmd":     "限价买入指令",
-        "market_buy_cmd":    "市价买入指令",
-        "market_sell_cmd":   "市价卖出指令",
-    },
-    "en": {
-        "trade_header":      "🔔 【Trade Execution Report】",
-        "heartbeat_header":  "💓 【Heartbeat】",
-        "error_header":      "🚨 【Strategy Error】",
-        "signal_label":      "Signal",
-        "dashboard_label":   "📊 Dashboard",
-        "equity":            "Equity",
-        "buying_power":      "Buying Power",
-        "no_trades":         "✅ No rebalance needed",
-        "separator":         "━━━━━━━━━━━━━━━━━━",
-        "signal_hold":       "Trend Hold",
-        "signal_entry":      "Entry Signal",
-        "signal_reduce":     "Reduce Signal",
-        "signal_exit":       "Exit Signal",
-        "signal_idle":       "Idle",
-        "limit_buy":         "Limit Buy",
-        "market_buy":        "Market Buy",
-        "market_sell":       "Market Sell",
-        "shares":            " shares",
-        "submitted":         "submitted",
-        "failed":            "failed",
-        "exception":         "error",
-        "buy_label":         "Buy",
-        "limit_buy_cmd":     "Limit Buy",
-        "market_buy_cmd":    "Market Buy",
-        "market_sell_cmd":   "Market Sell",
-    },
-}
-
-
-def t(key, **kwargs):
-    """Return translated string for the current LANG setting."""
-    lang = NOTIFY_LANG if NOTIFY_LANG in I18N else "en"
-    template = I18N[lang].get(key, key)
-    return template.format(**kwargs) if kwargs else template
-
-
-def signal_text(icon_key):
-    """Return the emoji + translated signal name, e.g. '💎 趋势持有'."""
-    emoji = SIGNAL_ICONS.get(icon_key, "❓")
-    name = t(f"signal_{icon_key}")
-    return f"{emoji} {name}"
+t = build_translator(NOTIFY_LANG)
+signal_text = build_signal_text(t)
 
 
 def validate_config():
@@ -167,14 +90,7 @@ def validate_config():
 validate_config()
 
 
-def send_tg_message(message):
-    if not TG_TOKEN or not TG_CHAT_ID:
-        return
-    url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-    try:
-        requests.post(url, json={"chat_id": TG_CHAT_ID, "text": message}, timeout=15)
-    except Exception as e:
-        print(f"Telegram send failed: {e}", flush=True)
+send_tg_message = build_sender(TG_TOKEN, TG_CHAT_ID)
 
 
 def get_hybrid_allocation(total_equity_usd, qqq_p, stop_line):
