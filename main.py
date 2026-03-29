@@ -36,7 +36,7 @@ APP_KEY = os.getenv("SCHWAB_API_KEY")
 APP_SECRET = os.getenv("SCHWAB_APP_SECRET")
 TG_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TG_CHAT_ID = os.getenv("GLOBAL_TELEGRAM_CHAT_ID")
-SECRET_ID = "SCHWAB_TOKENS"
+SECRET_ID = "schwab_token"
 TOKEN_PATH = '/tmp/token.json'
 
 CASH_RESERVE_RATIO = 0.05

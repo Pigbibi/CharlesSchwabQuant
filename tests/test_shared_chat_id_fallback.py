@@ -113,6 +113,7 @@ class SharedChatIdTests(unittest.TestCase):
                 module = importlib.reload(module)
 
         self.assertEqual(module.TG_CHAT_ID, "shared-chat-id")
+        self.assertEqual(module.SECRET_ID, "schwab_token")
 
 
 if __name__ == "__main__":

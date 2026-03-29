@@ -99,6 +99,8 @@ QQQ: 600.64 | MA200: 580.62 | Exit: 558.97
 
 Only `GLOBAL_TELEGRAM_CHAT_ID` and `NOTIFY_LANG` are good candidates for cross-project sharing. `TELEGRAM_TOKEN`, Schwab API credentials, and other runtime secrets should remain repository-specific.
 
+The Schwab OAuth token payload is read from Secret Manager secret `schwab_token`.
+
 ### GitHub-managed Cloud Run env sync
 
 If code deployment still uses Google Cloud Trigger, but you want GitHub to be the single source of truth for runtime env vars, this repo now includes `.github/workflows/sync-cloud-run-env.yml`.
@@ -231,6 +233,8 @@ QQQ: 600.64 | MA200: 580.62 | Exit: 558.97
 | `NOTIFY_LANG` | 通知语言: `en`（英文，默认）或 `zh`（中文） |
 
 如果你在多个 quant 仓库之间保留一层共享配置，通常只建议共享 `GLOBAL_TELEGRAM_CHAT_ID` 和 `NOTIFY_LANG`。`TELEGRAM_TOKEN`、Schwab API key 这些仍然应该由这个仓库自己管理。
+
+Schwab OAuth token payload 当前从 Secret Manager 的 `schwab_token` 里读取。
 
 ### GitHub 统一管理 Cloud Run 环境变量
 
