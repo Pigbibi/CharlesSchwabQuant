@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-US_EQUITY_DOMAIN = "us_equity"
-CRYPTO_DOMAIN = "crypto"
+from quant_platform_kit.common.strategies import (
+    US_EQUITY_DOMAIN,
+    StrategyDefinition,
+    get_supported_profiles_for_platform as qpk_get_supported_profiles_for_platform,
+    resolve_strategy_definition as qpk_resolve_strategy_definition,
+)
 
 SCHWAB_PLATFORM = "schwab"
-
-
-@dataclass(frozen=True)
-class StrategyDefinition:
-    profile: str
-    domain: str
-    supported_platforms: frozenset[str]
 
 
 DEFAULT_STRATEGY_PROFILE = "hybrid_growth_income"
@@ -33,11 +28,10 @@ SUPPORTED_STRATEGY_PROFILES = frozenset(STRATEGY_DEFINITIONS)
 
 
 def get_supported_profiles_for_platform(platform_id: str) -> frozenset[str]:
-    return frozenset(
-        profile
-        for profile, definition in STRATEGY_DEFINITIONS.items()
-        if platform_id in definition.supported_platforms
-        and definition.domain in PLATFORM_SUPPORTED_DOMAINS.get(platform_id, frozenset())
+    return qpk_get_supported_profiles_for_platform(
+        STRATEGY_DEFINITIONS,
+        PLATFORM_SUPPORTED_DOMAINS,
+        platform_id=platform_id,
     )
 
 
@@ -46,18 +40,10 @@ def resolve_strategy_definition(
     *,
     platform_id: str,
 ) -> StrategyDefinition:
-    profile = (raw_value or DEFAULT_STRATEGY_PROFILE).strip().lower()
-    supported = ", ".join(sorted(get_supported_profiles_for_platform(platform_id)))
-    definition = STRATEGY_DEFINITIONS.get(profile)
-
-    if definition is None or platform_id not in definition.supported_platforms:
-        raise ValueError(
-            f"Unsupported STRATEGY_PROFILE: {profile}. Supported values: {sorted(get_supported_profiles_for_platform(platform_id))}"
-        )
-
-    if definition.domain not in PLATFORM_SUPPORTED_DOMAINS.get(platform_id, frozenset()):
-        raise ValueError(
-            f"Unsupported strategy domain {definition.domain!r} for platform {platform_id!r}"
-        )
-
-    return definition
+    return qpk_resolve_strategy_definition(
+        raw_value,
+        platform_id=platform_id,
+        strategy_definitions=STRATEGY_DEFINITIONS,
+        platform_supported_domains=PLATFORM_SUPPORTED_DOMAINS,
+        default_profile=DEFAULT_STRATEGY_PROFILE,
+    )

@@ -8,6 +8,9 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+QPK_SRC = ROOT.parent / "QuantPlatformKit" / "src"
+if str(QPK_SRC) not in sys.path:
+    sys.path.insert(0, str(QPK_SRC))
 
 
 from runtime_config_support import (  # noqa: E402
