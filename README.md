@@ -129,7 +129,6 @@ Recommended setup:
   - Optional: `QQQI_INCOME_RATIO`
   - Optional: `GOOGLE_CLOUD_PROJECT`
 - **Repository Secrets**
-  - `GCP_SA_KEY`
   - Optional fallback only: `TELEGRAM_TOKEN`
   - Optional fallback only: `SCHWAB_API_KEY`
   - Optional fallback only: `SCHWAB_APP_SECRET`
@@ -145,7 +144,8 @@ Important:
 - `STRATEGY_PROFILE` is kept as the future strategy-switch entry, but today this service only supports `hybrid_growth_income`.
 - The current strategy domain is `us_equity`, and the repo now keeps a thin strategy registry so future expansion can grow by domain + profile instead of mixing strategy and platform in one layer.
 - `INCOME_THRESHOLD_USD` and `QQQI_INCOME_RATIO` are optional in env sync. If you leave them unset, the app keeps using the code defaults (`100000` and `0.5`).
-- `GCP_SA_KEY` remains repository-specific. The Telegram token and Schwab API credentials should live in Secret Manager and be referenced by the secret-name variables above. Across multiple quant repos, only `GLOBAL_TELEGRAM_CHAT_ID` and `NOTIFY_LANG` are good cross-project shared settings.
+- GitHub now authenticates to Google Cloud with OIDC + Workload Identity Federation. `GCP_SA_KEY` is no longer required for this workflow.
+- The Telegram token and Schwab API credentials should live in Secret Manager and be referenced by the secret-name variables above. Across multiple quant repos, only `GLOBAL_TELEGRAM_CHAT_ID` and `NOTIFY_LANG` are good cross-project shared settings.
 
 ### Deployment unit and naming
 
@@ -278,7 +278,6 @@ Schwab OAuth token payload 当前从 Secret Manager 的 `schwab_token` 里读取
   - 可选：`QQQI_INCOME_RATIO`
   - 可选：`GOOGLE_CLOUD_PROJECT`
 - **仓库级 Secrets**
-  - `GCP_SA_KEY`
   - 仅保留为 fallback：`TELEGRAM_TOKEN`
   - 仅保留为 fallback：`SCHWAB_API_KEY`
   - 仅保留为 fallback：`SCHWAB_APP_SECRET`
@@ -294,7 +293,8 @@ Schwab OAuth token payload 当前从 Secret Manager 的 `schwab_token` 里读取
 - `STRATEGY_PROFILE` 当前只支持 `hybrid_growth_income`。
 - 当前策略域是 `us_equity`，本地策略注册表只用于域和 profile 校验。
 - `INCOME_THRESHOLD_USD` 和 `QQQI_INCOME_RATIO` 在 env-sync 里是可选项。不填时，程序会继续使用代码里的默认值：`100000` 和 `0.5`。
-- `GCP_SA_KEY` 仍然是这个仓库自己的 secret。Telegram token 和 Schwab API 凭据建议放到 Secret Manager，并通过上面的 secret-name 变量引用。对多个 quant 仓库来说，真正适合跨项目共享的通常只有 `GLOBAL_TELEGRAM_CHAT_ID` 和 `NOTIFY_LANG`。
+- GitHub 现在通过 OIDC + Workload Identity Federation 登录 Google Cloud，这个 workflow 不再需要 `GCP_SA_KEY`。
+- Telegram token 和 Schwab API 凭据建议放到 Secret Manager，并通过上面的 secret-name 变量引用。对多个 quant 仓库来说，真正适合跨项目共享的通常只有 `GLOBAL_TELEGRAM_CHAT_ID` 和 `NOTIFY_LANG`。
 
 ### 部署单元和命名建议
 
