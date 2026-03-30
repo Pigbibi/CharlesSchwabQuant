@@ -22,6 +22,12 @@ jobs:
           set -euo pipefail
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
+          python -m pip install ruff
+
+      - name: Run ruff
+        run: |
+          set -euo pipefail
+          ruff check .
 
       - name: Run unit tests
         run: |

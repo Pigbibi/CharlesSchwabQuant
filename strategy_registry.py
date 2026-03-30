@@ -3,6 +3,7 @@ from __future__ import annotations
 from us_equity_strategies import get_strategy_definitions as get_us_equity_strategy_definitions
 
 from quant_platform_kit.common.strategies import (
+    StrategyDefinition,
     US_EQUITY_DOMAIN,
     get_supported_profiles_for_platform as qpk_get_supported_profiles_for_platform,
     resolve_strategy_definition as qpk_resolve_strategy_definition,
