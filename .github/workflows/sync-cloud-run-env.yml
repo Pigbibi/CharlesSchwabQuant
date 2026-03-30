@@ -7,7 +7,7 @@ on:
 env:
   GCP_PROJECT_ID: charlesschwabquant
   GCP_WORKLOAD_IDENTITY_PROVIDER: projects/401309731911/locations/global/workloadIdentityPools/github-actions/providers/github-main
-  GCP_WORKLOAD_IDENTITY_SERVICE_ACCOUNT: schwab-platform-build@charlesschwabquant.iam.gserviceaccount.com
+  GCP_WORKLOAD_IDENTITY_SERVICE_ACCOUNT: schwab-platform-deploy@charlesschwabquant.iam.gserviceaccount.com
 
 jobs:
   sync-cloud-run-env:
