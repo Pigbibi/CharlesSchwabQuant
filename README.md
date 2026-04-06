@@ -20,6 +20,17 @@ The `hybrid_growth_income` strategy implementation is sourced from `UsEquityStra
 Full strategy documentation now lives in [`UsEquityStrategies`](https://github.com/QuantStrategyLab/UsEquityStrategies#hybrid_growth_income). The sections below focus on execution-side defaults and runtime behavior.
 This runtime matrix is the authoritative enablement source for Schwab. `UsEquityStrategies` only carries strategy-layer compatibility and metadata.
 
+### Execution boundary
+
+The mainline runtime now follows one path only:
+
+- `main.py` assembles `StrategyContext` plus platform overrides
+- `strategy_runtime.py` loads the unified strategy entrypoint
+- `entrypoint.evaluate(ctx)` returns a shared `StrategyDecision`
+- `decision_mapper.py` converts that decision into Schwab orders, notifications, and runtime updates
+
+Platform execution no longer depends on `strategy/allocation.py`, hard-coded strategy symbol lists, or direct reads of strategy-private config constants.
+
 
 **Schwab profile matrix**
 
@@ -175,6 +186,17 @@ Deploy as a Cloud Run service and trigger the root URL on a schedule (e.g. once 
 `hybrid_growth_income` 策略实现来自 `UsEquityStrategies`。
 
 完整策略说明现在放在 [`UsEquityStrategies`](https://github.com/QuantStrategyLab/UsEquityStrategies#hybrid_growth_income)。下面这些章节主要保留执行侧默认值和运行时行为。
+
+### 执行边界
+
+当前主线运行路径已经统一为：
+
+- `main.py` 负责组装 `StrategyContext` 和平台 override
+- `strategy_runtime.py` 负责加载统一策略入口
+- `entrypoint.evaluate(ctx)` 返回共享的 `StrategyDecision`
+- `decision_mapper.py` 再把决策转换成 Schwab 订单、通知和运行时更新
+
+平台执行主线已经不再依赖 `strategy/allocation.py`、硬编码策略符号列表，也不再直接读取策略私有配置常量。
 
 ### 策略概览
 
