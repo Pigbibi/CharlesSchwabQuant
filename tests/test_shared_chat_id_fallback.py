@@ -53,9 +53,16 @@ def install_stub_modules():
     cloud_run_module = types.ModuleType("entrypoints.cloud_run")
     cloud_run_module.is_market_open_today = lambda: True
 
-    strategy_allocation_module = types.ModuleType("strategy.allocation")
-    strategy_allocation_module.get_hybrid_allocation = lambda *args, **kwargs: 0.0
-    strategy_allocation_module.get_income_ratio = lambda *args, **kwargs: 0.0
+    strategy_runtime_module = types.ModuleType("strategy_runtime")
+    strategy_runtime_module.load_strategy_runtime = lambda *_args, **_kwargs: types.SimpleNamespace(
+        merged_runtime_config={
+            "benchmark_symbol": "QQQ",
+            "managed_symbols": ("TQQQ", "BOXX", "SPYI", "QQQI"),
+        },
+        managed_symbols=("TQQQ", "BOXX", "SPYI", "QQQI"),
+        benchmark_symbol="QQQ",
+        evaluate=lambda **_kwargs: None,
+    )
 
     google_module = types.ModuleType("google")
     google_module.__path__ = []
@@ -82,7 +89,7 @@ def install_stub_modules():
         "requests": requests_module,
         "application.rebalance_service": rebalance_service_module,
         "entrypoints.cloud_run": cloud_run_module,
-        "strategy.allocation": strategy_allocation_module,
+        "strategy_runtime": strategy_runtime_module,
         "google": google_module,
         "google.auth": google_auth_module,
         "google.cloud": google_cloud_module,

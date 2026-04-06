@@ -6,69 +6,31 @@ import time
 
 from quant_platform_kit.common.models import OrderIntent
 
-from strategy.allocation import build_rebalance_plan
-
 
 def run_strategy_core(
     client,
     now_ny,
     *,
-    fetch_default_daily_price_history_candles,
-    fetch_account_snapshot,
-    fetch_quotes,
+    fetch_reference_history,
+    fetch_managed_snapshot,
+    fetch_managed_quotes,
+    resolve_rebalance_plan,
     submit_equity_order,
     send_tg_message,
-    signal_text,
     translator,
-    income_threshold_usd,
-    qqqi_income_ratio,
-    cash_reserve_ratio,
-    rebalance_threshold_ratio,
     limit_buy_premium,
     sell_settle_delay_sec,
-    alloc_tier1_breakpoints,
-    alloc_tier1_values,
-    alloc_tier2_breakpoints,
-    alloc_tier2_values,
-    risk_leverage_factor,
-    risk_agg_cap,
-    risk_numerator,
-    atr_exit_scale,
-    atr_entry_scale,
-    exit_line_floor,
-    exit_line_cap,
-    entry_line_floor,
-    entry_line_cap,
 ):
     del now_ny
 
-    strategy_symbols = ["TQQQ", "BOXX", "SPYI", "QQQI"]
-    snapshot = fetch_account_snapshot(client, strategy_symbols=strategy_symbols)
-    plan = build_rebalance_plan(
-        fetch_default_daily_price_history_candles(client, "QQQ"),
-        snapshot,
-        signal_text_fn=signal_text,
-        translator=translator,
-        income_threshold_usd=income_threshold_usd,
-        qqqi_income_ratio=qqqi_income_ratio,
-        cash_reserve_ratio=cash_reserve_ratio,
-        rebalance_threshold_ratio=rebalance_threshold_ratio,
-        alloc_tier1_breakpoints=alloc_tier1_breakpoints,
-        alloc_tier1_values=alloc_tier1_values,
-        alloc_tier2_breakpoints=alloc_tier2_breakpoints,
-        alloc_tier2_values=alloc_tier2_values,
-        risk_leverage_factor=risk_leverage_factor,
-        risk_agg_cap=risk_agg_cap,
-        risk_numerator=risk_numerator,
-        atr_exit_scale=atr_exit_scale,
-        atr_entry_scale=atr_entry_scale,
-        exit_line_floor=exit_line_floor,
-        exit_line_cap=exit_line_cap,
-        entry_line_floor=entry_line_floor,
-        entry_line_cap=entry_line_cap,
+    snapshot = fetch_managed_snapshot(client)
+    plan = resolve_rebalance_plan(
+        qqq_history=fetch_reference_history(client),
+        snapshot=snapshot,
     )
+    strategy_symbols = plan["strategy_symbols"]
 
-    quote_snapshots = fetch_quotes(client, strategy_symbols)
+    quote_snapshots = fetch_managed_quotes(client)
     quotes = {
         symbol: {
             "lastPrice": quote_snapshots[symbol].last_price,

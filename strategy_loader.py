@@ -1,18 +1,25 @@
 from __future__ import annotations
 
-from types import ModuleType
-
-from quant_platform_kit.common.strategies import load_strategy_component_module
+from quant_platform_kit.common.strategies import (
+    StrategyDefinition,
+    load_strategy_entrypoint,
+)
+from quant_platform_kit.strategy_contracts import StrategyEntrypoint
 
 from strategy_registry import SCHWAB_PLATFORM, resolve_strategy_definition
 
 
-def load_allocation_module(raw_profile: str | None) -> ModuleType:
-    definition = resolve_strategy_definition(
+def load_strategy_definition(raw_profile: str | None) -> StrategyDefinition:
+    return resolve_strategy_definition(
         raw_profile,
         platform_id=SCHWAB_PLATFORM,
     )
-    return load_strategy_component_module(
+
+
+def load_strategy_entrypoint_for_profile(raw_profile: str | None) -> StrategyEntrypoint:
+    definition = load_strategy_definition(raw_profile)
+    return load_strategy_entrypoint(
         definition,
-        component_name="allocation",
+        platform_id=SCHWAB_PLATFORM,
+        available_inputs=("qqq_history",),
     )
