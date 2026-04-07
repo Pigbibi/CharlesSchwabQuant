@@ -95,6 +95,30 @@ jobs:
           project_id: ${{ env.GCP_PROJECT_ID }}
           version: ">= 416.0.0"
 
+      - name: Wait for Cloud Run deployment of current commit
+        if: steps.config.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+
+          target_sha="${GITHUB_SHA}"
+          deadline=$((SECONDS + 1800))
+
+          while true; do
+            deployed_sha="$(gcloud run services describe "${CLOUD_RUN_SERVICE}" --region "${CLOUD_RUN_REGION}" --format='value(spec.template.metadata.labels.commit-sha)' 2>/dev/null || true)"
+            if [ -n "${deployed_sha}" ] && [ "${deployed_sha}" = "${target_sha}" ]; then
+              echo "Cloud Run service ${CLOUD_RUN_SERVICE} is on commit ${deployed_sha}."
+              break
+            fi
+
+            if [ "${SECONDS}" -ge "${deadline}" ]; then
+              echo "Timed out waiting for Cloud Run service ${CLOUD_RUN_SERVICE} to deploy commit ${target_sha}. Last seen commit: ${deployed_sha:-<none>}" >&2
+              exit 1
+            fi
+
+            echo "Waiting for Cloud Run service ${CLOUD_RUN_SERVICE} to deploy commit ${target_sha}. Last seen commit: ${deployed_sha:-<none>}" >&2
+            sleep 10
+          done
+
       - name: Sync Cloud Run environment
         if: steps.config.outputs.enabled == 'true'
         run: |
