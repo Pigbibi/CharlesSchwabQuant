@@ -37,6 +37,7 @@ def run_strategy_core(
     submit_equity_order,
     send_tg_message,
     translator,
+    strategy_display_name,
     limit_buy_premium,
     sell_settle_delay_sec,
     dry_run_only=False,
@@ -197,7 +198,7 @@ def run_strategy_core(
         dry_run_line = f"{translator('dry_run_banner')}\n" if dry_run_only else ""
         trade_message = (
             f"{translator('trade_header')}\n"
-            f"{translator('strategy_profile', profile=plan.get('strategy_profile', '<unknown>'))}\n"
+            f"{translator('strategy_label', name=strategy_display_name)}\n"
             f"{dry_run_line}"
             f"{status_line}"
             f"📊 {translator('signal_label')}: {signal_display}\n\n"
@@ -215,7 +216,7 @@ def run_strategy_core(
         ]
         no_trade_message = (
             f"{translator('heartbeat_header')}\n"
-            f"{translator('strategy_profile', profile=plan.get('strategy_profile', '<unknown>'))}\n"
+            f"{translator('strategy_label', name=strategy_display_name)}\n"
             f"💰 {translator('equity')}: ${total_equity:,.2f}\n"
             f"{separator}\n"
             + "\n".join(holdings_lines) + "\n"

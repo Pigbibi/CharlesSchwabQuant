@@ -19,7 +19,7 @@ I18N = {
         "trade_header": "🔔 【交易执行报告】",
         "heartbeat_header": "💓 【心跳检测】",
         "error_header": "🚨 【策略异常】",
-        "strategy_profile": "🧭 策略: {profile}",
+        "strategy_label": "🧭 策略: {name}",
         "signal_label": "信号",
         "dry_run_banner": "🧪 仅 dry-run，本轮不提交真实订单",
         "dashboard_label": "📊 资产看板",
@@ -45,12 +45,17 @@ I18N = {
         "limit_buy_cmd": "限价买入指令",
         "market_buy_cmd": "市价买入指令",
         "market_sell_cmd": "市价卖出指令",
+        "strategy_name_hybrid_growth_income": "QQQ/TQQQ 增长收益",
+        "strategy_name_semiconductor_rotation_income": "芯片趋势收益",
+        "strategy_name_global_etf_rotation": "全球 ETF 轮动防御",
+        "strategy_name_russell_1000_multi_factor_defensive": "罗素1000多因子防御",
+        "strategy_name_tech_pullback_cash_buffer": "科技回撤现金缓冲",
     },
     "en": {
         "trade_header": "🔔 【Trade Execution Report】",
         "heartbeat_header": "💓 【Heartbeat】",
         "error_header": "🚨 【Strategy Error】",
-        "strategy_profile": "🧭 Strategy: {profile}",
+        "strategy_label": "🧭 Strategy: {name}",
         "signal_label": "Signal",
         "dry_run_banner": "🧪 Dry run only; no live orders submitted",
         "dashboard_label": "📊 Dashboard",
@@ -76,6 +81,11 @@ I18N = {
         "limit_buy_cmd": "Limit Buy",
         "market_buy_cmd": "Market Buy",
         "market_sell_cmd": "Market Sell",
+        "strategy_name_hybrid_growth_income": "QQQ/TQQQ Growth Income",
+        "strategy_name_semiconductor_rotation_income": "Semiconductor Trend Income",
+        "strategy_name_global_etf_rotation": "Global ETF Rotation Defense",
+        "strategy_name_russell_1000_multi_factor_defensive": "Russell 1000 Multi-Factor Defensive",
+        "strategy_name_tech_pullback_cash_buffer": "Tech Pullback Cash Buffer",
     },
 }
 
@@ -96,6 +106,20 @@ def build_signal_text(translate_fn):
         return f"{emoji} {name}"
 
     return signal_text
+
+
+def build_strategy_display_name(translate_fn):
+    def strategy_display_name(profile: str, *, fallback_name: str | None = None) -> str:
+        key = f"strategy_name_{str(profile or '').strip()}"
+        translated = translate_fn(key)
+        if translated != key:
+            return translated
+        fallback = str(fallback_name or "").strip()
+        if fallback:
+            return fallback
+        return str(profile or "").strip()
+
+    return strategy_display_name
 
 
 def build_sender(token, chat_id, *, requests_module=requests):

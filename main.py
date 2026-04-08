@@ -7,7 +7,12 @@ import google.auth
 from application.rebalance_service import run_strategy_core as run_rebalance_cycle
 from decision_mapper import map_strategy_decision_to_plan
 from entrypoints.cloud_run import is_market_open_today
-from notifications.telegram import build_sender, build_signal_text, build_translator
+from notifications.telegram import (
+    build_sender,
+    build_signal_text,
+    build_strategy_display_name,
+    build_translator,
+)
 from quant_platform_kit.schwab import (
     fetch_account_snapshot,
     fetch_default_daily_price_history_candles,
@@ -60,9 +65,14 @@ SELL_SETTLE_DELAY_SEC = 3
 # ---------------------------------------------------------------------------
 RUNTIME_SETTINGS = load_platform_runtime_settings()
 STRATEGY_PROFILE = RUNTIME_SETTINGS.strategy_profile
+STRATEGY_DISPLAY_NAME = RUNTIME_SETTINGS.strategy_display_name
 NOTIFY_LANG = RUNTIME_SETTINGS.notify_lang
 t = build_translator(NOTIFY_LANG)
 signal_text = build_signal_text(t)
+strategy_display_name = build_strategy_display_name(t)(
+    STRATEGY_PROFILE,
+    fallback_name=STRATEGY_DISPLAY_NAME,
+)
 
 
 def build_strategy_runtime_overrides(profile: str) -> dict[str, float]:
@@ -88,6 +98,10 @@ RUNTIME_LOG_CONTEXT = RuntimeLogContext(
     service_name=SERVICE_NAME,
     strategy_profile=STRATEGY_PROFILE,
     project_id=PROJECT_ID,
+    extra_fields={
+        "strategy_display_name": STRATEGY_DISPLAY_NAME,
+        "strategy_display_name_localized": strategy_display_name,
+    },
 )
 
 
@@ -129,6 +143,8 @@ def build_execution_report(log_context):
         summary={
             "managed_symbols": list(MANAGED_SYMBOLS),
             "benchmark_symbol": BENCHMARK_SYMBOL,
+            "strategy_display_name": STRATEGY_DISPLAY_NAME,
+            "strategy_display_name_localized": strategy_display_name,
         },
     )
 
@@ -243,6 +259,7 @@ def run_strategy_core(c, now_ny):
         submit_equity_order=submit_equity_order,
         send_tg_message=send_tg_message,
         translator=t,
+        strategy_display_name=strategy_display_name,
         limit_buy_premium=LIMIT_BUY_PREMIUM,
         sell_settle_delay_sec=SELL_SETTLE_DELAY_SEC,
         dry_run_only=RUNTIME_SETTINGS.dry_run_only,
