@@ -159,6 +159,45 @@ class DecisionMapperTests(unittest.TestCase):
         self.assertEqual(plan["execution"]["signal_display"], "quarterly")
         self.assertEqual(plan["execution"]["status_display"], "SPY:✅, EFA:✅")
 
+    def test_translates_weight_targets_for_russell_strategy(self):
+        snapshot = SimpleNamespace(
+            total_equity=100000.0,
+            buying_power=15000.0,
+            positions=(
+                SimpleNamespace(symbol="AAPL", quantity=10, market_value=10000.0),
+                SimpleNamespace(symbol="BOXX", quantity=20, market_value=3000.0),
+            ),
+            metadata={"account_hash": "demo"},
+        )
+        decision = StrategyDecision(
+            positions=(
+                PositionTarget(symbol="AAPL", target_weight=0.30),
+                PositionTarget(symbol="MSFT", target_weight=0.30),
+                PositionTarget(symbol="NVDA", target_weight=0.20),
+                PositionTarget(symbol="BOXX", target_weight=0.20, role="safe_haven"),
+            ),
+            diagnostics={
+                "signal_description": "risk on",
+                "status_description": "breadth=62.0% | regime=risk_on | benchmark=up",
+                "benchmark_symbol": "SPY",
+            },
+        )
+
+        plan = map_strategy_decision_to_plan(
+            decision,
+            snapshot=snapshot,
+            strategy_profile="russell_1000_multi_factor_defensive",
+        )
+
+        self.assertEqual(plan["allocation"]["target_mode"], "value")
+        self.assertEqual(plan["allocation"]["targets"]["AAPL"], 30000.0)
+        self.assertEqual(plan["allocation"]["targets"]["BOXX"], 20000.0)
+        self.assertEqual(plan["execution"]["signal_display"], "risk on")
+        self.assertEqual(
+            plan["execution"]["status_display"],
+            "breadth=62.0% | regime=risk_on | benchmark=up",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,6 +23,7 @@ ROLLBACK_STRATEGY_PROFILE = DEFAULT_STRATEGY_PROFILE
 
 SCHWAB_ROLLOUT_ALLOWLIST = frozenset({
     "global_etf_rotation",
+    "russell_1000_multi_factor_defensive",
     "tqqq_growth_income",
     "soxl_soxx_trend_income",
     "qqq_tech_enhancement",

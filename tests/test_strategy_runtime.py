@@ -45,6 +45,21 @@ class _TechEntrypoint:
         return StrategyDecision(diagnostics={"signal_description": "risk on"})
 
 
+class _RussellEntrypoint:
+    manifest = StrategyManifest(
+        profile="russell_1000_multi_factor_defensive",
+        domain="us_equity",
+        display_name="Russell 1000 Multi-Factor",
+        description="test entrypoint",
+        required_inputs=frozenset({"feature_snapshot"}),
+        default_config={"safe_haven": "BOXX", "benchmark_symbol": "SPY"},
+    )
+
+    def evaluate(self, ctx):
+        self.ctx = ctx
+        return StrategyDecision(diagnostics={"signal_description": "broad risk on"})
+
+
 def _build_runtime_settings(profile: str, *, feature_snapshot_path: str | None = None) -> PlatformRuntimeSettings:
     return PlatformRuntimeSettings(
         strategy_profile=profile,
@@ -184,6 +199,45 @@ class StrategyRuntimeTests(unittest.TestCase):
         self.assertEqual(entrypoint.ctx.market_data["feature_snapshot"][0]["symbol"], "AAPL")
         self.assertEqual(result.metadata["managed_symbols"], ("AAPL", "MSFT", "BOXX"))
         self.assertEqual(result.metadata["status_icon"], "🧲")
+
+    def test_feature_snapshot_runtime_loads_russell_snapshot_into_context(self):
+        entrypoint = _RussellEntrypoint()
+        runtime = strategy_runtime_module.LoadedStrategyRuntime(
+            entrypoint=entrypoint,
+            runtime_adapter=StrategyRuntimeAdapter(
+                status_icon="📏",
+                required_feature_columns=frozenset({"symbol", "sector", "mom_6_1", "mom_12_1", "sma200_gap", "vol_63", "maxdd_126"}),
+                managed_symbols_extractor=lambda *_args, **_kwargs: ("AAPL", "MSFT", "BOXX"),
+                portfolio_input_name="portfolio_snapshot",
+            ),
+            runtime_settings=_build_runtime_settings(
+                "russell_1000_multi_factor_defensive",
+                feature_snapshot_path="gs://bucket/russell.csv",
+            ),
+            merged_runtime_config={"safe_haven": "BOXX", "benchmark_symbol": "SPY"},
+            logger=lambda _message: None,
+        )
+
+        with patch.object(
+            strategy_runtime_module,
+            "load_feature_snapshot_guarded",
+            return_value=SimpleNamespace(
+                frame=[
+                    {"symbol": "SPY", "sector": "Benchmark", "mom_6_1": 0.1, "mom_12_1": 0.2, "sma200_gap": 0.03, "vol_63": 0.15, "maxdd_126": -0.12},
+                    {"symbol": "AAPL", "sector": "Technology", "mom_6_1": 0.3, "mom_12_1": 0.4, "sma200_gap": 0.08, "vol_63": 0.20, "maxdd_126": -0.10},
+                ],
+                metadata={"snapshot_guard_decision": "proceed", "snapshot_as_of": "2026-04-08"},
+            ),
+        ):
+            result = runtime.evaluate(
+                portfolio_snapshot=object(),
+                translator=lambda key, **_kwargs: key,
+                signal_text_fn=str,
+            )
+
+        self.assertEqual(entrypoint.ctx.market_data["feature_snapshot"][1]["symbol"], "AAPL")
+        self.assertEqual(result.metadata["managed_symbols"], ("AAPL", "MSFT", "BOXX"))
+        self.assertEqual(result.metadata["status_icon"], "📏")
 
 
 if __name__ == "__main__":

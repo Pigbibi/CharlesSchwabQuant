@@ -81,6 +81,7 @@ def map_strategy_decision_to_plan(
             status_display=str(
                 execution_annotations.get("status_display")
                 or diagnostics.get("status_display")
+                or diagnostics.get("status_description")
                 or diagnostics.get("canary_status")
                 or ""
             ),

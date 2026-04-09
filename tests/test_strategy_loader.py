@@ -15,6 +15,19 @@ class StrategyLoaderTests(unittest.TestCase):
         self.assertEqual(entrypoint.manifest.profile, "global_etf_rotation")
         self.assertEqual(entrypoint.manifest.required_inputs, frozenset({"market_history"}))
 
+    def test_load_strategy_entrypoint_resolves_russell_strategy(self):
+        try:
+            from strategy_loader import load_strategy_entrypoint_for_profile
+
+            entrypoint = load_strategy_entrypoint_for_profile("russell_1000_multi_factor_defensive")
+        except ModuleNotFoundError as exc:
+            if exc.name in {"numpy", "pandas"}:
+                self.skipTest(f"{exc.name} is not installed")
+            raise
+
+        self.assertEqual(entrypoint.manifest.profile, "russell_1000_multi_factor_defensive")
+        self.assertEqual(entrypoint.manifest.required_inputs, frozenset({"feature_snapshot"}))
+
     def test_load_strategy_entrypoint_resolves_tqqq_growth_income(self):
         try:
             from strategy_loader import load_strategy_entrypoint_for_profile
@@ -63,6 +76,18 @@ class StrategyLoaderTests(unittest.TestCase):
             frozenset({"market_history", "portfolio_snapshot"}),
         )
         self.assertEqual(adapter.portfolio_input_name, "portfolio_snapshot")
+
+    def test_load_strategy_runtime_adapter_supports_russell_strategy(self):
+        from strategy_loader import load_strategy_runtime_adapter_for_profile
+
+        adapter = load_strategy_runtime_adapter_for_profile("russell_1000_multi_factor_defensive")
+
+        self.assertEqual(
+            adapter.available_inputs,
+            frozenset({"feature_snapshot", "portfolio_snapshot"}),
+        )
+        self.assertEqual(adapter.portfolio_input_name, "portfolio_snapshot")
+        self.assertEqual(adapter.status_icon, "📏")
 
     def test_load_strategy_entrypoint_resolves_qqq_tech_enhancement(self):
         try:
