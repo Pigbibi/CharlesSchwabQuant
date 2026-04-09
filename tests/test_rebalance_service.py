@@ -36,7 +36,7 @@ class RebalanceServiceTests(unittest.TestCase):
             "QQQI": SimpleNamespace(last_price=50.0, ask_price=50.0),
         }
         plan = {
-            "strategy_profile": "hybrid_growth_income",
+            "strategy_profile": "tqqq_growth_income",
             "account_hash": "demo",
             "allocation": {
                 "target_mode": "value",
@@ -133,7 +133,7 @@ class RebalanceServiceTests(unittest.TestCase):
             "BOXX": SimpleNamespace(last_price=100.0, ask_price=100.0),
         }
         plan = {
-            "strategy_profile": "hybrid_growth_income",
+            "strategy_profile": "tqqq_growth_income",
             "account_hash": "demo",
             "allocation": {
                 "target_mode": "value",
@@ -223,7 +223,7 @@ class RebalanceServiceTests(unittest.TestCase):
             "BOXX": SimpleNamespace(last_price=100.0, ask_price=100.0),
         }
         plan = {
-            "strategy_profile": "hybrid_growth_income",
+            "strategy_profile": "tqqq_growth_income",
             "account_hash": "demo",
             "allocation": {
                 "target_mode": "value",

@@ -65,11 +65,10 @@ class RuntimeConfigSupportTests(unittest.TestCase):
             frozenset({DEFAULT_STRATEGY_PROFILE, "soxl_soxx_trend_income"}),
         )
 
-    def test_accepts_human_readable_alias(self):
+    def test_rejects_human_readable_alias(self):
         with patch.dict(os.environ, {"STRATEGY_PROFILE": "qqq_tqqq_growth_income"}, clear=True):
-            settings = load_platform_runtime_settings()
-
-        self.assertEqual(settings.strategy_profile, DEFAULT_STRATEGY_PROFILE)
+            with self.assertRaises(ValueError):
+                load_platform_runtime_settings()
 
     def test_reads_schwab_dry_run_only_flag(self):
         with patch.dict(os.environ, {"SCHWAB_DRY_RUN_ONLY": "true"}, clear=True):

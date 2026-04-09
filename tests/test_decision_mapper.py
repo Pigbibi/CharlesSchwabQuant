@@ -42,7 +42,7 @@ class DecisionMapperTests(unittest.TestCase):
         plan = map_strategy_decision_to_plan(
             decision,
             snapshot=snapshot,
-            strategy_profile="hybrid_growth_income",
+            strategy_profile="tqqq_growth_income",
         )
 
         self.assertEqual(plan["account_hash"], "demo")
@@ -83,7 +83,7 @@ class DecisionMapperTests(unittest.TestCase):
         plan = map_strategy_decision_to_plan(
             decision,
             snapshot=snapshot,
-            strategy_profile="hybrid_growth_income",
+            strategy_profile="tqqq_growth_income",
         )
 
         self.assertEqual(plan["execution"]["trade_threshold_value"], 500.0)

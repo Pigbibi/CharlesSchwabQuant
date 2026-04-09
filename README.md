@@ -15,7 +15,7 @@
 Automated trading service for Charles Schwab accounts, deployed on GCP Cloud Run. Allocates capital across three layers: **attack (TQQQ)** driven by QQQ MA200 + ATR bands with staged exits, **income (SPYI / QQQI)** when equity exceeds a threshold, and **defense (BOXX)** for idle cash. Each run fetches data, computes targets, places orders, and notifies via Telegram.
 
 This repository uses `QuantPlatformKit` for Schwab client bootstrap, account snapshot access, market data, and order submission. Cloud Run deploys this repository directly.
-The `tqqq_growth_income` strategy implementation is sourced from `UsEquityStrategies` (legacy alias: `hybrid_growth_income`).
+The `tqqq_growth_income` strategy implementation is sourced from `UsEquityStrategies`.
 
 Full strategy documentation now lives in [`UsEquityStrategies`](https://github.com/QuantStrategyLab/UsEquityStrategies#tqqq_growth_income). The sections below focus on execution-side defaults and runtime behavior.
 This runtime matrix is the authoritative enablement source for Schwab. `UsEquityStrategies` only carries strategy-layer compatibility and metadata.
@@ -190,7 +190,7 @@ Deploy as a Cloud Run service and trigger the root URL on a schedule (e.g. once 
 基于 Charles Schwab 账户的自动化交易服务，部署在 GCP Cloud Run 上。资金分配为三层：**进攻层 (TQQQ)** 基于 QQQ MA200 + ATR 波段分阶段退出，**收入层 (SPYI / QQQI)** 在资产超过阈值时启用，**防御层 (BOXX)** 管理闲置资金。每次运行获取数据、计算目标、下单并通过 Telegram 通知。
 
 这个仓库通过 `QuantPlatformKit` 复用 Schwab client 初始化、账户快照、行情读取和下单逻辑。Cloud Run 直接部署这个仓库。
-`tqqq_growth_income` 策略实现来自 `UsEquityStrategies`（兼容别名：`hybrid_growth_income`）。
+`tqqq_growth_income` 策略实现来自 `UsEquityStrategies`。
 
 完整策略说明现在放在 [`UsEquityStrategies`](https://github.com/QuantStrategyLab/UsEquityStrategies#tqqq_growth_income)。下面这些章节主要保留执行侧默认值和运行时行为。
 

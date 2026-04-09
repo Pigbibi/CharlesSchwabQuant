@@ -12,7 +12,7 @@ from quant_platform_kit.strategy_contracts import (
 class _FakeEntrypoint:
     def __init__(self):
         self.manifest = StrategyManifest(
-            profile="hybrid_growth_income",
+            profile="tqqq_growth_income",
             domain="us_equity",
             display_name="Hybrid Growth Income",
             description="test entrypoint",
@@ -50,7 +50,7 @@ class StrategyRuntimeTests(unittest.TestCase):
         self.assertEqual(runtime.managed_symbols, ("TQQQ", "BOXX", "SPYI", "QQQI"))
         self.assertEqual(runtime.benchmark_symbol, "QQQ")
         self.assertIn("signal_text_fn", entrypoint.ctx.runtime_config)
-        self.assertEqual(result.metadata["strategy_profile"], "hybrid_growth_income")
+        self.assertEqual(result.metadata["strategy_profile"], "tqqq_growth_income")
 
     def test_load_strategy_runtime_merges_overrides_on_top_of_entrypoint_defaults(self):
         entrypoint = _FakeEntrypoint()
@@ -62,11 +62,11 @@ class StrategyRuntimeTests(unittest.TestCase):
                 return_value=StrategyRuntimeAdapter(portfolio_input_name="portfolio_snapshot"),
             ):
                 runtime = strategy_runtime_module.load_strategy_runtime(
-                    "hybrid_growth_income",
+                    "tqqq_growth_income",
                     runtime_overrides={"benchmark_symbol": "VGT"},
                 )
 
-        mock_loader.assert_called_once_with("hybrid_growth_income")
+        mock_loader.assert_called_once_with("tqqq_growth_income")
         self.assertIs(runtime.entrypoint, entrypoint)
         self.assertEqual(runtime.benchmark_symbol, "VGT")
         self.assertEqual(runtime.managed_symbols, ("TQQQ", "BOXX", "SPYI", "QQQI"))
