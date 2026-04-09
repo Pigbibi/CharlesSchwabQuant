@@ -40,6 +40,31 @@ class StrategyLoaderTests(unittest.TestCase):
         )
         self.assertEqual(adapter.portfolio_input_name, "portfolio_snapshot")
 
+    def test_load_strategy_entrypoint_resolves_qqq_tech_enhancement(self):
+        try:
+            from strategy_loader import load_strategy_entrypoint_for_profile
+
+            entrypoint = load_strategy_entrypoint_for_profile("qqq_tech_enhancement")
+        except ModuleNotFoundError as exc:
+            if exc.name in {"numpy", "pandas"}:
+                self.skipTest(f"{exc.name} is not installed")
+            raise
+
+        self.assertEqual(entrypoint.manifest.profile, "qqq_tech_enhancement")
+        self.assertEqual(entrypoint.manifest.required_inputs, frozenset({"feature_snapshot"}))
+
+    def test_load_strategy_runtime_adapter_supports_tech_on_schwab(self):
+        from strategy_loader import load_strategy_runtime_adapter_for_profile
+
+        adapter = load_strategy_runtime_adapter_for_profile("qqq_tech_enhancement")
+
+        self.assertEqual(
+            adapter.available_inputs,
+            frozenset({"feature_snapshot", "portfolio_snapshot"}),
+        )
+        self.assertEqual(adapter.portfolio_input_name, "portfolio_snapshot")
+        self.assertTrue(adapter.require_snapshot_manifest)
+
     def test_load_strategy_runtime_adapter_supports_semiconductor_on_schwab(self):
         from strategy_loader import load_strategy_runtime_adapter_for_profile
 

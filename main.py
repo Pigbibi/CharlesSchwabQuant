@@ -77,6 +77,7 @@ strategy_display_name = build_strategy_display_name(t)(
     STRATEGY_PROFILE,
     fallback_name=STRATEGY_DISPLAY_NAME,
 )
+LATEST_PLAN_STRATEGY_SYMBOLS: tuple[str, ...] = ()
 
 
 def build_strategy_runtime_overrides(profile: str) -> dict[str, float]:
@@ -90,7 +91,9 @@ def build_strategy_runtime_overrides(profile: str) -> dict[str, float]:
 
 STRATEGY_RUNTIME = load_strategy_runtime(
     STRATEGY_PROFILE,
+    runtime_settings=RUNTIME_SETTINGS,
     runtime_overrides=build_strategy_runtime_overrides(STRATEGY_PROFILE),
+    logger=lambda message: print(message, flush=True),
 )
 STRATEGY_RUNTIME_CONFIG = dict(STRATEGY_RUNTIME.merged_runtime_config)
 MANAGED_SYMBOLS = STRATEGY_RUNTIME.managed_symbols
@@ -167,6 +170,8 @@ def persist_execution_report(report):
 # Strategy execution
 # ---------------------------------------------------------------------------
 def fetch_reference_history(client):
+    if "feature_snapshot" in AVAILABLE_INPUTS:
+        return {}
     if "benchmark_history" in AVAILABLE_INPUTS or "qqq_history" in AVAILABLE_INPUTS:
         return fetch_default_daily_price_history_candles(client, BENCHMARK_SYMBOL)
     if "derived_indicators" in AVAILABLE_INPUTS or "indicators" in AVAILABLE_INPUTS:
@@ -182,7 +187,8 @@ def fetch_managed_snapshot(client):
 
 
 def fetch_managed_quotes(client):
-    return fetch_quotes(client, list(MANAGED_SYMBOLS))
+    symbols = tuple(LATEST_PLAN_STRATEGY_SYMBOLS or MANAGED_SYMBOLS)
+    return fetch_quotes(client, list(symbols))
 
 
 def build_semiconductor_indicators(client, *, trend_window: int) -> dict[str, dict[str, float]]:
@@ -216,6 +222,7 @@ def build_account_state_from_snapshot(snapshot) -> dict[str, object]:
 
 
 def resolve_rebalance_plan(*, qqq_history, snapshot):
+    global LATEST_PLAN_STRATEGY_SYMBOLS
     account_state = None
     if "account_state" in AVAILABLE_INPUTS:
         account_state = build_account_state_from_snapshot(snapshot)
@@ -233,11 +240,13 @@ def resolve_rebalance_plan(*, qqq_history, snapshot):
         signal_text_fn=signal_text,
     )
     evaluation = STRATEGY_RUNTIME.evaluate(**evaluation_inputs)
-    return map_strategy_decision_to_plan(
+    plan = map_strategy_decision_to_plan(
         evaluation.decision,
         snapshot=snapshot,
         strategy_profile=STRATEGY_PROFILE,
     )
+    LATEST_PLAN_STRATEGY_SYMBOLS = tuple(plan["allocation"]["strategy_symbols"])
+    return plan
 
 
 def run_strategy_core(c, now_ny):

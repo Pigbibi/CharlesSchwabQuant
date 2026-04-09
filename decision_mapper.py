@@ -4,8 +4,10 @@ from typing import Any
 
 from quant_platform_kit.strategy_contracts import (
     StrategyDecision,
+    ValueTargetExecutionAnnotations,
     build_value_target_portfolio_inputs_from_snapshot,
     build_value_target_runtime_plan,
+    translate_decision_to_target_mode,
 )
 
 
@@ -15,9 +17,17 @@ def map_strategy_decision_to_plan(
     snapshot,
     strategy_profile: str,
 ) -> dict[str, Any]:
+    normalized_decision = translate_decision_to_target_mode(
+        decision,
+        target_mode="value",
+        total_equity=float(snapshot.total_equity),
+    )
+    diagnostics = dict(decision.diagnostics)
+    raw_annotations = diagnostics.get("execution_annotations")
+    execution_annotations = dict(raw_annotations) if isinstance(raw_annotations, dict) else {}
     portfolio_inputs = build_value_target_portfolio_inputs_from_snapshot(snapshot)
     plan = build_value_target_runtime_plan(
-        decision,
+        normalized_decision,
         strategy_profile=strategy_profile,
         portfolio_inputs=portfolio_inputs,
         strategy_symbols_order="risk_safe_income",
@@ -57,6 +67,39 @@ def map_strategy_decision_to_plan(
             "current_min_trade": 0.0,
             "investable_cash": portfolio_inputs.liquid_cash,
         },
+        annotations=ValueTargetExecutionAnnotations(
+            trade_threshold_value=float(
+                execution_annotations.get("trade_threshold_value", diagnostics.get("threshold", 0.0)) or 0.0
+            ),
+            reserved_cash=float(execution_annotations.get("reserved_cash", diagnostics.get("reserved", 0.0)) or 0.0),
+            signal_display=str(
+                execution_annotations.get("signal_display")
+                or diagnostics.get("signal_display")
+                or diagnostics.get("signal_description")
+                or ""
+            ),
+            status_display=str(
+                execution_annotations.get("status_display")
+                or diagnostics.get("status_display")
+                or ""
+            ),
+            dashboard_text=str(
+                execution_annotations.get("dashboard_text")
+                or diagnostics.get("dashboard")
+                or ""
+            ),
+            separator=str(execution_annotations.get("separator") or "━━━━━━━━━━━━━━━━━━"),
+            benchmark_symbol=str(execution_annotations.get("benchmark_symbol") or "QQQ"),
+            benchmark_price=float(execution_annotations.get("benchmark_price", diagnostics.get("qqq_price", 0.0)) or 0.0),
+            long_trend_value=float(execution_annotations.get("long_trend_value", diagnostics.get("ma200", 0.0)) or 0.0),
+            exit_line=float(execution_annotations.get("exit_line", diagnostics.get("exit_line", 0.0)) or 0.0),
+            deploy_ratio_text=str(execution_annotations.get("deploy_ratio_text") or ""),
+            income_ratio_text=str(execution_annotations.get("income_ratio_text") or ""),
+            income_locked_ratio_text=str(execution_annotations.get("income_locked_ratio_text") or ""),
+            active_risk_asset=str(execution_annotations.get("active_risk_asset") or ""),
+            current_min_trade=float(execution_annotations.get("current_min_trade", 0.0) or 0.0),
+            investable_cash=float(execution_annotations.get("investable_cash", portfolio_inputs.liquid_cash) or 0.0),
+        ),
     )
     plan["account_hash"] = snapshot.metadata["account_hash"]
     return plan

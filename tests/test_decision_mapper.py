@@ -91,6 +91,39 @@ class DecisionMapperTests(unittest.TestCase):
         self.assertEqual(plan["execution"]["signal_display"], "hold")
         self.assertEqual(plan["execution"]["dashboard_text"], "dashboard")
 
+    def test_translates_weight_targets_for_qqq_tech_enhancement(self):
+        snapshot = SimpleNamespace(
+            total_equity=100000.0,
+            buying_power=20000.0,
+            positions=(
+                SimpleNamespace(symbol="AAPL", quantity=10, market_value=10000.0),
+                SimpleNamespace(symbol="BOXX", quantity=20, market_value=4000.0),
+            ),
+            metadata={"account_hash": "demo"},
+        )
+        decision = StrategyDecision(
+            positions=(
+                PositionTarget(symbol="AAPL", target_weight=0.35),
+                PositionTarget(symbol="MSFT", target_weight=0.25),
+                PositionTarget(symbol="BOXX", target_weight=0.40, role="safe_haven"),
+            ),
+            diagnostics={
+                "signal_display": "🧲 Risk On",
+                "dashboard": "dashboard",
+            },
+        )
+
+        plan = map_strategy_decision_to_plan(
+            decision,
+            snapshot=snapshot,
+            strategy_profile="qqq_tech_enhancement",
+        )
+
+        self.assertEqual(plan["allocation"]["target_mode"], "value")
+        self.assertEqual(plan["allocation"]["targets"]["AAPL"], 35000.0)
+        self.assertEqual(plan["allocation"]["targets"]["MSFT"], 25000.0)
+        self.assertEqual(plan["allocation"]["targets"]["BOXX"], 40000.0)
+
 
 if __name__ == "__main__":
     unittest.main()

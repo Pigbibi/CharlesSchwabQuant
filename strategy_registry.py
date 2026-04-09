@@ -24,6 +24,7 @@ ROLLBACK_STRATEGY_PROFILE = DEFAULT_STRATEGY_PROFILE
 SCHWAB_ROLLOUT_ALLOWLIST = frozenset({
     "tqqq_growth_income",
     "soxl_soxx_trend_income",
+    "qqq_tech_enhancement",
 })
 
 PLATFORM_SUPPORTED_DOMAINS: dict[str, frozenset[str]] = {
@@ -33,11 +34,12 @@ STRATEGY_CATALOG = get_strategy_catalog()
 PLATFORM_CAPABILITY_MATRIX = PlatformCapabilityMatrix(
     platform_id=SCHWAB_PLATFORM,
     supported_domains=PLATFORM_SUPPORTED_DOMAINS[SCHWAB_PLATFORM],
-    supported_target_modes=frozenset({"value"}),
+    supported_target_modes=frozenset({"weight", "value"}),
     supported_inputs=frozenset(
         {
             "benchmark_history",
             "portfolio_snapshot",
+            "feature_snapshot",
             "derived_indicators",
             "indicators",
             "account_state",

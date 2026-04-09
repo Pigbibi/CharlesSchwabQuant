@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import strategy_runtime as strategy_runtime_module
@@ -7,6 +8,7 @@ from quant_platform_kit.strategy_contracts import (
     StrategyManifest,
     StrategyRuntimeAdapter,
 )
+from runtime_config_support import PlatformRuntimeSettings
 
 
 class _FakeEntrypoint:
@@ -28,12 +30,44 @@ class _FakeEntrypoint:
         return StrategyDecision(diagnostics={"signal_display": "hold"})
 
 
+class _TechEntrypoint:
+    manifest = StrategyManifest(
+        profile="qqq_tech_enhancement",
+        domain="us_equity",
+        display_name="QQQ Tech Enhancement",
+        description="test entrypoint",
+        required_inputs=frozenset({"feature_snapshot"}),
+        default_config={"safe_haven": "BOXX", "benchmark_symbol": "QQQ"},
+    )
+
+    def evaluate(self, ctx):
+        self.ctx = ctx
+        return StrategyDecision(diagnostics={"signal_description": "risk on"})
+
+
+def _build_runtime_settings(profile: str, *, feature_snapshot_path: str | None = None) -> PlatformRuntimeSettings:
+    return PlatformRuntimeSettings(
+        strategy_profile=profile,
+        strategy_display_name=(
+            "QQQ Tech Enhancement" if profile == "qqq_tech_enhancement" else "TQQQ Growth Income"
+        ),
+        strategy_domain="us_equity",
+        notify_lang="en",
+        dry_run_only=False,
+        feature_snapshot_path=feature_snapshot_path,
+        feature_snapshot_manifest_path=None,
+        strategy_config_path=None,
+        strategy_config_source=None,
+    )
+
+
 class StrategyRuntimeTests(unittest.TestCase):
     def test_runtime_exposes_managed_symbols_and_benchmark(self):
         entrypoint = _FakeEntrypoint()
         runtime = strategy_runtime_module.LoadedStrategyRuntime(
             entrypoint=entrypoint,
             runtime_adapter=StrategyRuntimeAdapter(portfolio_input_name="portfolio_snapshot"),
+            runtime_settings=_build_runtime_settings("tqqq_growth_income"),
             merged_runtime_config={
                 "benchmark_symbol": "QQQ",
                 "managed_symbols": ("TQQQ", "BOXX", "SPYI", "QQQI"),
@@ -63,6 +97,7 @@ class StrategyRuntimeTests(unittest.TestCase):
             ):
                 runtime = strategy_runtime_module.load_strategy_runtime(
                     "tqqq_growth_income",
+                    runtime_settings=_build_runtime_settings("tqqq_growth_income"),
                     runtime_overrides={"benchmark_symbol": "VGT"},
                 )
 
@@ -70,6 +105,47 @@ class StrategyRuntimeTests(unittest.TestCase):
         self.assertIs(runtime.entrypoint, entrypoint)
         self.assertEqual(runtime.benchmark_symbol, "VGT")
         self.assertEqual(runtime.managed_symbols, ("TQQQ", "BOXX", "SPYI", "QQQI"))
+
+    def test_feature_snapshot_runtime_loads_snapshot_into_context(self):
+        entrypoint = _TechEntrypoint()
+        runtime = strategy_runtime_module.LoadedStrategyRuntime(
+            entrypoint=entrypoint,
+            runtime_adapter=StrategyRuntimeAdapter(
+                status_icon="🧲",
+                required_feature_columns=frozenset({"symbol", "close", "as_of"}),
+                snapshot_date_columns=("as_of",),
+                require_snapshot_manifest=False,
+                managed_symbols_extractor=lambda *_args, **_kwargs: ("AAPL", "MSFT", "BOXX"),
+                portfolio_input_name="portfolio_snapshot",
+            ),
+            runtime_settings=_build_runtime_settings(
+                "qqq_tech_enhancement",
+                feature_snapshot_path="gs://bucket/tech.csv",
+            ),
+            merged_runtime_config={"safe_haven": "BOXX", "benchmark_symbol": "QQQ"},
+            logger=lambda _message: None,
+        )
+
+        with patch.object(
+            strategy_runtime_module,
+            "load_feature_snapshot_guarded",
+            return_value=SimpleNamespace(
+                frame=[
+                    {"as_of": "2026-04-08", "symbol": "AAPL", "close": 100.0},
+                    {"as_of": "2026-04-08", "symbol": "MSFT", "close": 200.0},
+                ],
+                metadata={"snapshot_guard_decision": "proceed", "snapshot_as_of": "2026-04-08"},
+            ),
+        ):
+            result = runtime.evaluate(
+                portfolio_snapshot=object(),
+                translator=lambda key, **_kwargs: key,
+                signal_text_fn=str,
+            )
+
+        self.assertEqual(entrypoint.ctx.market_data["feature_snapshot"][0]["symbol"], "AAPL")
+        self.assertEqual(result.metadata["managed_symbols"], ("AAPL", "MSFT", "BOXX"))
+        self.assertEqual(result.metadata["status_icon"], "🧲")
 
 
 if __name__ == "__main__":

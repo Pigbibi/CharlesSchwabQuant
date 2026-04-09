@@ -41,6 +41,10 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         self.assertEqual(settings.strategy_domain, US_EQUITY_DOMAIN)
         self.assertEqual(settings.notify_lang, DEFAULT_NOTIFY_LANG)
         self.assertFalse(settings.dry_run_only)
+        self.assertIsNone(settings.feature_snapshot_path)
+        self.assertIsNone(settings.feature_snapshot_manifest_path)
+        self.assertIsNone(settings.strategy_config_path)
+        self.assertIsNone(settings.strategy_config_source)
 
     def test_uses_explicit_strategy_profile(self):
         with patch.dict(os.environ, {"STRATEGY_PROFILE": DEFAULT_STRATEGY_PROFILE}, clear=True):
@@ -56,13 +60,13 @@ class RuntimeConfigSupportTests(unittest.TestCase):
     def test_platform_supported_profiles_are_filtered_by_registry(self):
         self.assertEqual(
             get_supported_profiles_for_platform(SCHWAB_PLATFORM),
-            frozenset({DEFAULT_STRATEGY_PROFILE, "soxl_soxx_trend_income"}),
+            frozenset({DEFAULT_STRATEGY_PROFILE, "soxl_soxx_trend_income", "qqq_tech_enhancement"}),
         )
 
     def test_platform_eligible_profiles_are_exposed_by_capability_matrix(self):
         self.assertEqual(
             get_eligible_profiles_for_platform(SCHWAB_PLATFORM),
-            frozenset({DEFAULT_STRATEGY_PROFILE, "soxl_soxx_trend_income"}),
+            frozenset({DEFAULT_STRATEGY_PROFILE, "soxl_soxx_trend_income", "qqq_tech_enhancement"}),
         )
 
     def test_rejects_human_readable_alias(self):
@@ -82,6 +86,7 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         self.assertEqual(by_profile[DEFAULT_STRATEGY_PROFILE]["display_name"], "TQQQ Growth Income")
         self.assertTrue(by_profile[DEFAULT_STRATEGY_PROFILE]["is_default"])
         self.assertIn("soxl_soxx_trend_income", by_profile)
+        self.assertIn("qqq_tech_enhancement", by_profile)
 
     def test_platform_profile_status_matrix_matches_current_schwab_rollout(self):
         rows = get_platform_profile_status_matrix()
@@ -89,7 +94,7 @@ class RuntimeConfigSupportTests(unittest.TestCase):
 
         self.assertEqual(
             set(by_profile),
-            {"tqqq_growth_income", "soxl_soxx_trend_income"},
+            {"tqqq_growth_income", "soxl_soxx_trend_income", "qqq_tech_enhancement"},
         )
         self.assertEqual(
             by_profile["tqqq_growth_income"],
@@ -110,6 +115,12 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         )
         self.assertTrue(by_profile["soxl_soxx_trend_income"]["eligible"])
         self.assertTrue(by_profile["soxl_soxx_trend_income"]["enabled"])
+        self.assertEqual(
+            by_profile["qqq_tech_enhancement"]["display_name"],
+            "QQQ Tech Enhancement",
+        )
+        self.assertTrue(by_profile["qqq_tech_enhancement"]["eligible"])
+        self.assertTrue(by_profile["qqq_tech_enhancement"]["enabled"])
 
     def test_print_strategy_profile_status_json_matches_registry(self):
         result = subprocess.run(
@@ -133,6 +144,26 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         self.assertIn("display_name", result.stdout)
         self.assertIn("tqqq_growth_income", result.stdout)
         self.assertIn("TQQQ Growth Income", result.stdout)
+        self.assertIn("QQQ Tech Enhancement", result.stdout)
+
+    def test_loads_feature_snapshot_env_for_tech_profile(self):
+        with patch.dict(
+            os.environ,
+            {
+                "STRATEGY_PROFILE": "qqq_tech_enhancement",
+                "SCHWAB_FEATURE_SNAPSHOT_PATH": "gs://bucket/tech.csv",
+                "SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH": "gs://bucket/tech.csv.manifest.json",
+                "SCHWAB_STRATEGY_CONFIG_PATH": "/workspace/configs/tech.json",
+            },
+            clear=True,
+        ):
+            settings = load_platform_runtime_settings()
+
+        self.assertEqual(settings.strategy_profile, "qqq_tech_enhancement")
+        self.assertEqual(settings.feature_snapshot_path, "gs://bucket/tech.csv")
+        self.assertEqual(settings.feature_snapshot_manifest_path, "gs://bucket/tech.csv.manifest.json")
+        self.assertEqual(settings.strategy_config_path, "/workspace/configs/tech.json")
+        self.assertEqual(settings.strategy_config_source, "env")
 
 
 
