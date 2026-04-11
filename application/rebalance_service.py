@@ -141,33 +141,55 @@ def run_strategy_core(
             if dry_run_only:
                 if action_type == "SELL":
                     trade_logs.append(
-                        f"🧪 DRY_RUN {translator('market_sell_cmd')} {symbol}: {quantity}{translator('shares')}"
+                        translator(
+                            "dry_run_trade_log",
+                            command=translator("market_sell_cmd"),
+                            symbol=symbol,
+                            quantity=quantity,
+                            shares=translator("shares"),
+                        )
                     )
                 elif action_type == "BUY_LIMIT":
                     trade_logs.append(
-                        f"🧪 DRY_RUN {translator('limit_buy_cmd')} {symbol} (${price_text}): {quantity}{translator('shares')}"
+                        translator(
+                            "dry_run_trade_log_with_price",
+                            command=translator("limit_buy_cmd"),
+                            symbol=symbol,
+                            price=price_text,
+                            quantity=quantity,
+                            shares=translator("shares"),
+                        )
                     )
                 elif action_type == "BUY_MARKET":
                     trade_logs.append(
-                        f"🧪 DRY_RUN {translator('market_buy_cmd')} {symbol}: {quantity}{translator('shares')}"
+                        translator(
+                            "dry_run_trade_log",
+                            command=translator("market_buy_cmd"),
+                            symbol=symbol,
+                            quantity=quantity,
+                            shares=translator("shares"),
+                        )
                     )
                 return True
 
             report = submit_equity_order(client, plan["account_hash"], order_intent)
             success = report.status == "accepted"
             info = report.broker_order_id if success else report.raw_payload.get("detail", report.status)
+            order_id_suffix = str(translator("order_id_suffix", order_id=info)).strip()
+            if not order_id_suffix or order_id_suffix == "order_id_suffix":
+                order_id_suffix = f"（订单号: {info}）"
             if success:
                 if action_type == "SELL":
                     trade_logs.append(
-                        f"✅ 📉 {translator('market_sell_cmd')} {symbol}: {quantity}{translator('shares')} (ID: {info})"
+                        f"✅ 📉 {translator('market_sell_cmd')} {symbol}: {quantity}{translator('shares')} {order_id_suffix}"
                     )
                 elif action_type == "BUY_LIMIT":
                     trade_logs.append(
-                        f"✅ 💰 {translator('limit_buy_cmd')} {symbol} (${price_text}): {quantity}{translator('shares')} {translator('submitted')} (ID: {info})"
+                        f"✅ 💰 {translator('limit_buy_cmd')} {symbol} (${price_text}): {quantity}{translator('shares')} {translator('submitted')} {order_id_suffix}"
                     )
                 elif action_type == "BUY_MARKET":
                     trade_logs.append(
-                        f"✅ 📈 {translator('market_buy_cmd')} {symbol}: {quantity}{translator('shares')} (ID: {info})"
+                        f"✅ 📈 {translator('market_buy_cmd')} {symbol}: {quantity}{translator('shares')} {order_id_suffix}"
                     )
                 return True
 

@@ -296,7 +296,10 @@ class RebalanceServiceTests(unittest.TestCase):
             "failed": "failed",
             "buy_label": "buy",
             "exception": "exception",
-            "dry_run_banner": "dry-run only",
+            "dry_run_banner": "模拟运行",
+            "dry_run_trade_log": "模拟下单: {command} {symbol}: {quantity}{shares}",
+            "dry_run_trade_log_with_price": "模拟下单: {command} {symbol} (${price}): {quantity}{shares}",
+            "order_id_suffix": "订单号: {order_id}",
         }
 
         def fail_submit(*_args, **_kwargs):
@@ -319,8 +322,8 @@ class RebalanceServiceTests(unittest.TestCase):
         )
 
         self.assertTrue(sent_messages)
-        self.assertIn("dry-run only", sent_messages[0])
-        self.assertIn("DRY_RUN", sent_messages[0])
+        self.assertIn("模拟运行", sent_messages[0])
+        self.assertIn("模拟下单", sent_messages[0])
 
 
 if __name__ == "__main__":
