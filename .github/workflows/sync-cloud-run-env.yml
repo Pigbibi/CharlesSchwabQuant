@@ -26,6 +26,9 @@ jobs:
       SCHWAB_APP_SECRET_SECRET_NAME: ${{ vars.SCHWAB_APP_SECRET_SECRET_NAME }}
       STRATEGY_PROFILE: ${{ vars.STRATEGY_PROFILE || 'tqqq_growth_income' }}
       SCHWAB_DRY_RUN_ONLY: ${{ vars.SCHWAB_DRY_RUN_ONLY }}
+      SCHWAB_FEATURE_SNAPSHOT_PATH: ${{ vars.SCHWAB_FEATURE_SNAPSHOT_PATH }}
+      SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH: ${{ vars.SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH }}
+      SCHWAB_STRATEGY_CONFIG_PATH: ${{ vars.SCHWAB_STRATEGY_CONFIG_PATH }}
       INCOME_THRESHOLD_USD: ${{ vars.INCOME_THRESHOLD_USD }}
       QQQI_INCOME_RATIO: ${{ vars.QQQI_INCOME_RATIO }}
       EXECUTION_REPORT_GCS_URI: ${{ vars.EXECUTION_REPORT_GCS_URI }}
@@ -70,6 +73,14 @@ jobs:
 
           if [ -z "${SCHWAB_APP_SECRET_SECRET_NAME:-}" ] && [ -z "${SCHWAB_APP_SECRET:-}" ]; then
             missing_vars+=("SCHWAB_APP_SECRET_SECRET_NAME or SCHWAB_APP_SECRET")
+          fi
+
+          if { [ "${STRATEGY_PROFILE:-}" = "tech_communication_pullback_enhancement" ] || [ "${STRATEGY_PROFILE:-}" = "qqq_tech_enhancement" ] || [ "${STRATEGY_PROFILE:-}" = "russell_1000_multi_factor_defensive" ] || [ "${STRATEGY_PROFILE:-}" = "mega_cap_leader_rotation_dynamic_top20" ]; } && [ -z "${SCHWAB_FEATURE_SNAPSHOT_PATH:-}" ]; then
+            missing_vars+=("SCHWAB_FEATURE_SNAPSHOT_PATH")
+          fi
+
+          if { [ "${STRATEGY_PROFILE:-}" = "tech_communication_pullback_enhancement" ] || [ "${STRATEGY_PROFILE:-}" = "qqq_tech_enhancement" ] || [ "${STRATEGY_PROFILE:-}" = "mega_cap_leader_rotation_dynamic_top20" ]; } && [ -z "${SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH:-}" ]; then
+            missing_vars+=("SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH")
           fi
 
           if [ "${#missing_vars[@]}" -gt 0 ]; then
@@ -158,6 +169,24 @@ jobs:
           else
             env_pairs+=("SCHWAB_APP_SECRET=${SCHWAB_APP_SECRET}")
             remove_secret_vars+=("SCHWAB_APP_SECRET")
+          fi
+
+          if [ -n "${SCHWAB_FEATURE_SNAPSHOT_PATH:-}" ]; then
+            env_pairs+=("SCHWAB_FEATURE_SNAPSHOT_PATH=${SCHWAB_FEATURE_SNAPSHOT_PATH}")
+          else
+            remove_env_vars+=("SCHWAB_FEATURE_SNAPSHOT_PATH")
+          fi
+
+          if [ -n "${SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH:-}" ]; then
+            env_pairs+=("SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH=${SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH}")
+          else
+            remove_env_vars+=("SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH")
+          fi
+
+          if [ -n "${SCHWAB_STRATEGY_CONFIG_PATH:-}" ]; then
+            env_pairs+=("SCHWAB_STRATEGY_CONFIG_PATH=${SCHWAB_STRATEGY_CONFIG_PATH}")
+          else
+            remove_env_vars+=("SCHWAB_STRATEGY_CONFIG_PATH")
           fi
 
           if [ -n "${INCOME_THRESHOLD_USD:-}" ]; then
