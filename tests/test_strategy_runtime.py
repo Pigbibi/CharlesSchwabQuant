@@ -21,7 +21,7 @@ class _FakeEntrypoint:
             required_inputs=frozenset({"benchmark_history", "portfolio_snapshot"}),
             default_config={
                 "benchmark_symbol": "QQQ",
-                "managed_symbols": ("TQQQ", "BOXX", "SPYI", "QQQI"),
+                "managed_symbols": ("TQQQ", "QQQ", "BOXX", "SPYI", "QQQI"),
             },
         )
 
@@ -100,7 +100,7 @@ class StrategyRuntimeTests(unittest.TestCase):
             runtime_settings=_build_runtime_settings("tqqq_growth_income"),
             merged_runtime_config={
                 "benchmark_symbol": "QQQ",
-                "managed_symbols": ("TQQQ", "BOXX", "SPYI", "QQQI"),
+                "managed_symbols": ("TQQQ", "QQQ", "BOXX", "SPYI", "QQQI"),
             },
         )
 
@@ -111,7 +111,7 @@ class StrategyRuntimeTests(unittest.TestCase):
             translator=lambda key, **_kwargs: key,
         )
 
-        self.assertEqual(runtime.managed_symbols, ("TQQQ", "BOXX", "SPYI", "QQQI"))
+        self.assertEqual(runtime.managed_symbols, ("TQQQ", "QQQ", "BOXX", "SPYI", "QQQI"))
         self.assertEqual(runtime.benchmark_symbol, "QQQ")
         self.assertIn("signal_text_fn", entrypoint.ctx.runtime_config)
         self.assertEqual(result.metadata["strategy_profile"], "tqqq_growth_income")
@@ -172,7 +172,7 @@ class StrategyRuntimeTests(unittest.TestCase):
         mock_loader.assert_called_once_with("tqqq_growth_income")
         self.assertIs(runtime.entrypoint, entrypoint)
         self.assertEqual(runtime.benchmark_symbol, "VGT")
-        self.assertEqual(runtime.managed_symbols, ("TQQQ", "BOXX", "SPYI", "QQQI"))
+        self.assertEqual(runtime.managed_symbols, ("TQQQ", "QQQ", "BOXX", "SPYI", "QQQI"))
 
     def test_feature_snapshot_runtime_loads_snapshot_into_context(self):
         entrypoint = _TechEntrypoint()

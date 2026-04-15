@@ -56,8 +56,16 @@ TG_CHAT_ID = os.getenv("GLOBAL_TELEGRAM_CHAT_ID")
 SECRET_ID = "schwab_token"
 TOKEN_PATH = '/tmp/token.json'
 
-INCOME_THRESHOLD_USD = float(os.getenv("INCOME_THRESHOLD_USD", "100000"))
-QQQI_INCOME_RATIO = float(os.getenv("QQQI_INCOME_RATIO", "0.5"))
+
+def _optional_float_env(name: str) -> float | None:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return None
+    return float(value)
+
+
+INCOME_THRESHOLD_USD = _optional_float_env("INCOME_THRESHOLD_USD")
+QQQI_INCOME_RATIO = _optional_float_env("QQQI_INCOME_RATIO")
 
 # Order pricing: limit buy premium above ask price
 LIMIT_BUY_PREMIUM = 1.005
@@ -82,12 +90,13 @@ LATEST_PLAN_STRATEGY_SYMBOLS: tuple[str, ...] = ()
 
 
 def build_strategy_runtime_overrides(profile: str) -> dict[str, float]:
+    overrides: dict[str, float] = {}
     if profile == "tqqq_growth_income":
-        return {
-            "income_threshold_usd": INCOME_THRESHOLD_USD,
-            "qqqi_income_ratio": QQQI_INCOME_RATIO,
-        }
-    return {}
+        if INCOME_THRESHOLD_USD is not None:
+            overrides["income_threshold_usd"] = INCOME_THRESHOLD_USD
+        if QQQI_INCOME_RATIO is not None:
+            overrides["qqqi_income_ratio"] = QQQI_INCOME_RATIO
+    return overrides
 
 
 STRATEGY_RUNTIME = load_strategy_runtime(
@@ -118,7 +127,7 @@ def validate_config():
     missing = [v for v in ("SCHWAB_API_KEY", "SCHWAB_APP_SECRET") if not os.getenv(v)]
     if missing:
         raise EnvironmentError(f"Missing required env vars: {', '.join(missing)}")
-    if not (0.0 <= QQQI_INCOME_RATIO <= 1.0):
+    if QQQI_INCOME_RATIO is not None and not (0.0 <= QQQI_INCOME_RATIO <= 1.0):
         raise ValueError(f"QQQI_INCOME_RATIO must be in [0,1], got {QQQI_INCOME_RATIO}")
 
 

@@ -41,7 +41,11 @@ class StrategyLoaderTests(unittest.TestCase):
         self.assertEqual(entrypoint.manifest.profile, "tqqq_growth_income")
         self.assertEqual(
             entrypoint.manifest.default_config["managed_symbols"],
-            ("TQQQ", "BOXX", "SPYI", "QQQI"),
+            ("TQQQ", "QQQ", "BOXX", "SPYI", "QQQI"),
+        )
+        self.assertEqual(
+            entrypoint.manifest.default_config["attack_allocation_mode"],
+            "fixed_qqq_tqqq_pullback",
         )
 
     def test_load_strategy_entrypoint_resolves_mega_cap_dynamic_top20(self):
