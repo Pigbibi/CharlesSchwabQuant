@@ -1,4 +1,5 @@
 import os
+import time
 import traceback
 from datetime import datetime, timezone
 from flask import Flask
@@ -72,6 +73,8 @@ LIMIT_BUY_PREMIUM = 1.005
 
 # Sell-to-buy delay: seconds to wait after sells before buying
 SELL_SETTLE_DELAY_SEC = 3
+POST_SELL_REFRESH_ATTEMPTS = 5
+POST_SELL_REFRESH_INTERVAL_SEC = 1
 
 # ---------------------------------------------------------------------------
 # Runtime / i18n
@@ -313,6 +316,9 @@ def run_strategy_core(c, now_ny):
         limit_buy_premium=LIMIT_BUY_PREMIUM,
         sell_settle_delay_sec=SELL_SETTLE_DELAY_SEC,
         dry_run_only=RUNTIME_SETTINGS.dry_run_only,
+        post_sell_refresh_attempts=POST_SELL_REFRESH_ATTEMPTS,
+        post_sell_refresh_interval_sec=POST_SELL_REFRESH_INTERVAL_SEC,
+        sleeper=time.sleep,
     )
 
 

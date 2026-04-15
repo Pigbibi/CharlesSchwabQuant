@@ -375,6 +375,170 @@ class RebalanceServiceTests(unittest.TestCase):
         self.assertEqual(snapshots, [])
         self.assertTrue(sent_messages)
 
+    def test_run_strategy_core_retries_refresh_until_sold_cash_is_available(self):
+        sent_messages = []
+        submitted_orders = []
+        snapshots = [
+            SimpleNamespace(
+                positions=(
+                    SimpleNamespace(symbol="TQQQ", quantity=0, market_value=0.0),
+                    SimpleNamespace(symbol="BOXX", quantity=10, market_value=1000.0),
+                ),
+                total_equity=1200.0,
+                buying_power=124.0,
+                metadata={"account_hash": "demo", "phase": "before_sell"},
+            ),
+            SimpleNamespace(
+                positions=(
+                    SimpleNamespace(symbol="TQQQ", quantity=0, market_value=0.0),
+                    SimpleNamespace(symbol="BOXX", quantity=1, market_value=100.0),
+                ),
+                total_equity=1200.0,
+                buying_power=124.0,
+                metadata={"account_hash": "demo", "phase": "stale_after_sell"},
+            ),
+            SimpleNamespace(
+                positions=(
+                    SimpleNamespace(symbol="TQQQ", quantity=0, market_value=0.0),
+                    SimpleNamespace(symbol="BOXX", quantity=1, market_value=100.0),
+                ),
+                total_equity=1200.0,
+                buying_power=1024.0,
+                metadata={"account_hash": "demo", "phase": "settled_after_sell"},
+            ),
+        ]
+        quote_snapshots = {
+            "TQQQ": SimpleNamespace(last_price=50.0, ask_price=50.0),
+            "BOXX": SimpleNamespace(last_price=100.0, ask_price=100.0),
+        }
+        base_execution = {
+            "trade_threshold_value": 10.0,
+            "reserved_cash": 0.0,
+            "signal_display": "🚀 Entry",
+            "dashboard_text": "dashboard",
+            "separator": "━━━━━━━━━━━━━━━━━━",
+            "benchmark_symbol": "QQQ",
+            "benchmark_price": 400.0,
+            "long_trend_value": 380.0,
+            "exit_line": 380.0,
+        }
+        initial_plan = {
+            "strategy_profile": "tqqq_growth_income",
+            "account_hash": "demo",
+            "allocation": {
+                "target_mode": "value",
+                "strategy_symbols": ("TQQQ", "BOXX"),
+                "risk_symbols": ("TQQQ",),
+                "income_symbols": (),
+                "safe_haven_symbols": ("BOXX",),
+                "targets": {"TQQQ": 900.0, "BOXX": 100.0},
+            },
+            "portfolio": {
+                "strategy_symbols": ("TQQQ", "BOXX"),
+                "portfolio_rows": (("TQQQ", "BOXX"),),
+                "market_values": {"TQQQ": 0.0, "BOXX": 1000.0},
+                "quantities": {"TQQQ": 0, "BOXX": 10},
+                "total_equity": 1200.0,
+                "liquid_cash": 124.0,
+                "cash_sweep_symbol": "BOXX",
+            },
+            "execution": base_execution,
+        }
+        stale_plan = {
+            **initial_plan,
+            "portfolio": {
+                "strategy_symbols": ("TQQQ", "BOXX"),
+                "portfolio_rows": (("TQQQ", "BOXX"),),
+                "market_values": {"TQQQ": 0.0, "BOXX": 100.0},
+                "quantities": {"TQQQ": 0, "BOXX": 1},
+                "total_equity": 1200.0,
+                "liquid_cash": 124.0,
+                "cash_sweep_symbol": "BOXX",
+            },
+        }
+        settled_plan = {
+            **initial_plan,
+            "portfolio": {
+                "strategy_symbols": ("TQQQ", "BOXX"),
+                "portfolio_rows": (("TQQQ", "BOXX"),),
+                "market_values": {"TQQQ": 0.0, "BOXX": 100.0},
+                "quantities": {"TQQQ": 0, "BOXX": 1},
+                "total_equity": 1200.0,
+                "liquid_cash": 1024.0,
+                "cash_sweep_symbol": "BOXX",
+            },
+        }
+        translations = {
+            "trade_header": "trade",
+            "heartbeat_header": "heartbeat",
+            "strategy_label": "strategy={name}",
+            "signal_label": "signal",
+            "equity": "equity",
+            "buying_power": "buying_power",
+            "market_sell_cmd": "sell",
+            "limit_buy_cmd": "limit buy",
+            "market_buy_cmd": "buy",
+            "submitted": "submitted",
+            "shares": "shares",
+            "no_trades": "no trades",
+            "market_sell": "market_sell",
+            "limit_buy": "limit_buy",
+            "market_buy": "market_buy",
+            "failed": "failed",
+            "buy_label": "buy",
+            "exception": "exception",
+        }
+
+        def fetch_snapshot(_client):
+            return snapshots.pop(0)
+
+        def resolve_plan(*, qqq_history, snapshot):
+            self.assertEqual(len(qqq_history), 1)
+            phase = snapshot.metadata["phase"]
+            if phase == "before_sell":
+                return initial_plan
+            if phase == "stale_after_sell":
+                return stale_plan
+            return settled_plan
+
+        def submit_order(_client, _account_hash, order_intent):
+            submitted_orders.append(order_intent)
+            return SimpleNamespace(
+                status="accepted",
+                broker_order_id=f"order-{len(submitted_orders)}",
+                raw_payload={},
+            )
+
+        run_strategy_core(
+            object(),
+            None,
+            fetch_reference_history=lambda client: [{"close": 1.0, "high": 1.0, "low": 1.0}],
+            fetch_managed_snapshot=fetch_snapshot,
+            fetch_managed_quotes=lambda client: quote_snapshots,
+            resolve_rebalance_plan=resolve_plan,
+            submit_equity_order=submit_order,
+            send_tg_message=sent_messages.append,
+            translator=lambda key, **kwargs: translations.get(key, key).format(**kwargs)
+            if kwargs
+            else translations.get(key, key),
+            strategy_display_name="TQQQ Growth Income",
+            limit_buy_premium=1.0,
+            sell_settle_delay_sec=0,
+            post_sell_refresh_attempts=2,
+            post_sell_refresh_interval_sec=0,
+            sleeper=lambda _seconds: None,
+        )
+
+        self.assertEqual(len(submitted_orders), 2)
+        self.assertEqual(submitted_orders[0].side, "sell")
+        self.assertEqual(submitted_orders[0].symbol, "BOXX")
+        self.assertEqual(submitted_orders[0].quantity, 9)
+        self.assertEqual(submitted_orders[1].side, "buy")
+        self.assertEqual(submitted_orders[1].symbol, "TQQQ")
+        self.assertEqual(submitted_orders[1].quantity, 18)
+        self.assertEqual(snapshots, [])
+        self.assertTrue(sent_messages)
+
     def test_run_strategy_core_dry_run_skips_submit_and_marks_message(self):
         sent_messages = []
         snapshot = SimpleNamespace(

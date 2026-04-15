@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import time
-
 from quant_platform_kit.common.models import OrderIntent
 
 _ZH_REASON_REPLACEMENTS = (
@@ -58,6 +56,10 @@ def _plan_allocation(plan):
     return dict(plan.get("allocation") or {})
 
 
+def _noop_sleep(_seconds):
+    return None
+
+
 def _has_benchmark_context(execution):
     return any(
         float(execution.get(key) or 0.0) > 0.0
@@ -95,6 +97,9 @@ def run_strategy_core(
     limit_buy_premium,
     sell_settle_delay_sec,
     dry_run_only=False,
+    post_sell_refresh_attempts=1,
+    post_sell_refresh_interval_sec=0.0,
+    sleeper=_noop_sleep,
 ):
     del now_ny
 
@@ -124,6 +129,11 @@ def run_strategy_core(
             }
             for symbol in symbols
         }
+
+    def buying_power_from_plan(current_portfolio, current_execution):
+        current_liquid_cash = float(current_portfolio["liquid_cash"])
+        current_reserved_cash = float(current_execution["reserved_cash"])
+        return max(0.0, current_liquid_cash - current_reserved_cash)
 
     snapshot = fetch_managed_snapshot(client)
     plan, portfolio, execution, allocation = load_plan(snapshot)
@@ -240,9 +250,26 @@ def run_strategy_core(
                 sell_executed = True
 
     if sell_executed:
-        time.sleep(sell_settle_delay_sec)
-        snapshot = fetch_managed_snapshot(client)
-        plan, portfolio, execution, allocation = load_plan(snapshot)
+        previous_buying_power = buying_power_from_plan(portfolio, execution)
+        refresh_attempts = max(1, int(post_sell_refresh_attempts or 1))
+        refresh_interval = max(0.0, float(post_sell_refresh_interval_sec or 0.0))
+        best_refreshed_state = None
+        best_buying_power = previous_buying_power
+        for attempt in range(refresh_attempts):
+            sleeper(sell_settle_delay_sec if attempt == 0 else refresh_interval)
+            snapshot = fetch_managed_snapshot(client)
+            refreshed_state = load_plan(snapshot)
+            refreshed_buying_power = buying_power_from_plan(
+                refreshed_state[1],
+                refreshed_state[2],
+            )
+            if best_refreshed_state is None or refreshed_buying_power > best_buying_power:
+                best_refreshed_state = refreshed_state
+                best_buying_power = refreshed_buying_power
+            if refreshed_buying_power > previous_buying_power:
+                best_refreshed_state = refreshed_state
+                break
+        plan, portfolio, execution, allocation = best_refreshed_state
         strategy_symbols = tuple(allocation["strategy_symbols"])
         quotes = load_quotes(strategy_symbols)
         market_values = dict(portfolio["market_values"])
