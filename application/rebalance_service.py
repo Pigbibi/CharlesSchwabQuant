@@ -236,6 +236,24 @@ def run_strategy_core(
     market_values = dict(portfolio["market_values"])
     target_values = dict(allocation["targets"])
     threshold = float(execution["trade_threshold_value"])
+    cash_sweep_symbol = str(portfolio["cash_sweep_symbol"])
+    buy_order_symbols = tuple(
+        allocation.get("income_symbols", ()) + allocation.get("risk_symbols", ())
+    )
+
+    def cash_sweep_sale_can_fund_buy(quantity):
+        sale_value = quantity * quotes[cash_sweep_symbol]["lastPrice"]
+        available_after_sale = buying_power_from_plan(portfolio, execution) + sale_value
+        for buy_symbol in buy_order_symbols:
+            underweight_value = target_values[buy_symbol] - market_values[buy_symbol]
+            if underweight_value <= threshold:
+                continue
+            ask = quotes[buy_symbol]["askPrice"]
+            amount_to_spend = min(underweight_value, available_after_sale)
+            if int(amount_to_spend // ask) > 0:
+                return True
+        return False
+
     sell_order_symbols = tuple(
         allocation.get("risk_symbols", ())
         + allocation.get("income_symbols", ())
@@ -247,6 +265,8 @@ def run_strategy_core(
         target = target_values[symbol]
         if current > (target + threshold):
             quantity = int((current - target) // quotes[symbol]["lastPrice"])
+            if symbol == cash_sweep_symbol and not cash_sweep_sale_can_fund_buy(quantity):
+                continue
             if execute_fire_forget(symbol, "SELL", quantity):
                 sell_executed = True
 
@@ -280,9 +300,6 @@ def run_strategy_core(
     liquid_cash = float(portfolio["liquid_cash"])
     reserved_cash = float(execution["reserved_cash"])
     estimated_buying_power = max(0, liquid_cash - reserved_cash)
-    buy_order_symbols = tuple(
-        allocation.get("income_symbols", ()) + allocation.get("risk_symbols", ())
-    )
     for symbol in buy_order_symbols:
         target_val = target_values[symbol]
         if market_values[symbol] < (target_val - threshold):
@@ -295,7 +312,6 @@ def run_strategy_core(
                     execute_fire_forget(symbol, "BUY_LIMIT", quantity, limit_price)
                     estimated_buying_power -= quantity * limit_price
 
-    cash_sweep_symbol = str(portfolio["cash_sweep_symbol"])
     if estimated_buying_power > quotes[cash_sweep_symbol]["lastPrice"] * 2:
         quantity = int(estimated_buying_power // quotes[cash_sweep_symbol]["lastPrice"])
         if quantity > 0:

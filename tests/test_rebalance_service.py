@@ -461,6 +461,88 @@ class RebalanceServiceTests(unittest.TestCase):
         self.assertEqual(snapshots, [])
         self.assertTrue(sent_messages)
 
+    def test_run_strategy_core_skips_cash_sweep_sale_when_targets_are_below_one_share(self):
+        sent_messages = []
+        submitted_orders = []
+        snapshot = SimpleNamespace(
+            positions=(
+                SimpleNamespace(symbol="TQQQ", quantity=9, market_value=500.0),
+                SimpleNamespace(symbol="QQQ", quantity=0, market_value=0.0),
+                SimpleNamespace(symbol="BOXX", quantity=5, market_value=600.0),
+            ),
+            total_equity=1200.0,
+            buying_power=80.0,
+            metadata={"account_hash": "demo"},
+        )
+        quote_snapshots = {
+            "TQQQ": SimpleNamespace(last_price=55.0, ask_price=55.0),
+            "QQQ": SimpleNamespace(last_price=640.0, ask_price=640.0),
+            "BOXX": SimpleNamespace(last_price=100.0, ask_price=100.0),
+        }
+        plan = {
+            "strategy_profile": "tqqq_growth_income",
+            "account_hash": "demo",
+            "allocation": {
+                "target_mode": "value",
+                "strategy_symbols": ("TQQQ", "QQQ", "BOXX"),
+                "risk_symbols": ("QQQ", "TQQQ"),
+                "income_symbols": (),
+                "safe_haven_symbols": ("BOXX",),
+                "targets": {"TQQQ": 540.0, "QQQ": 500.0, "BOXX": 100.0},
+            },
+            "portfolio": {
+                "strategy_symbols": ("TQQQ", "QQQ", "BOXX"),
+                "portfolio_rows": (("TQQQ", "QQQ", "BOXX"),),
+                "market_values": {"TQQQ": 500.0, "QQQ": 0.0, "BOXX": 600.0},
+                "quantities": {"TQQQ": 9, "QQQ": 0, "BOXX": 5},
+                "total_equity": 1200.0,
+                "liquid_cash": 80.0,
+                "cash_sweep_symbol": "BOXX",
+            },
+            "execution": {
+                "trade_threshold_value": 10.0,
+                "reserved_cash": 0.0,
+                "signal_display": "Hold",
+                "dashboard_text": "",
+                "separator": "-----",
+                "benchmark_symbol": "QQQ",
+                "benchmark_price": 0.0,
+                "long_trend_value": 0.0,
+                "exit_line": 0.0,
+            },
+        }
+        translations = {
+            "heartbeat_header": "heartbeat",
+            "strategy_label": "strategy={name}",
+            "signal_label": "signal",
+            "equity": "equity",
+            "no_trades": "no trades",
+        }
+
+        def fail_submit(*_args, **_kwargs):
+            raise AssertionError("cash sweep should not churn when no buy can fill")
+
+        run_strategy_core(
+            object(),
+            None,
+            fetch_reference_history=lambda client: [{"close": 1.0, "high": 1.0, "low": 1.0}],
+            fetch_managed_snapshot=lambda client: snapshot,
+            fetch_managed_quotes=lambda client: quote_snapshots,
+            resolve_rebalance_plan=lambda *, qqq_history, snapshot: plan,
+            submit_equity_order=fail_submit,
+            send_tg_message=sent_messages.append,
+            translator=lambda key, **kwargs: translations.get(key, key).format(**kwargs)
+            if kwargs
+            else translations.get(key, key),
+            strategy_display_name="TQQQ Growth Income",
+            limit_buy_premium=1.0,
+            sell_settle_delay_sec=0,
+        )
+
+        self.assertFalse(submitted_orders)
+        self.assertEqual(len(sent_messages), 1)
+        self.assertIn("no trades", sent_messages[0])
+
     def test_run_strategy_core_retries_refresh_until_sold_cash_is_available(self):
         sent_messages = []
         submitted_orders = []
