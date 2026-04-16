@@ -200,13 +200,26 @@ def attach_strategy_plugin_report(report, *, signals, error: str | None = None):
         report.setdefault("diagnostics", {})["strategy_plugin_error"] = error
 
 
+def translate_strategy_plugin_value(category: str, raw_value: str | None) -> str:
+    value = str(raw_value or "").strip() or "unknown"
+    key = f"strategy_plugin_{category}_{value}"
+    translated = t(key)
+    return translated if translated != key else value
+
+
 def build_strategy_plugin_notification_lines(signals) -> tuple[str, ...]:
     lines = []
     for signal in signals:
         route = signal.canonical_route or "unknown_route"
         action = signal.suggested_action or "unknown_action"
         lines.append(
-            f"Plugin {signal.plugin} [{signal.effective_mode}] {route} -> {action}"
+            t(
+                "strategy_plugin_line",
+                plugin=translate_strategy_plugin_value("name", signal.plugin),
+                mode=translate_strategy_plugin_value("mode", signal.effective_mode),
+                route=translate_strategy_plugin_value("route", route),
+                action=translate_strategy_plugin_value("action", action),
+            )
         )
     return tuple(lines)
 

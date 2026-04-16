@@ -17,7 +17,7 @@ if str(PLATFORM_KIT_SRC) not in sys.path:
     sys.path.insert(0, str(PLATFORM_KIT_SRC))
 
 
-def install_stub_modules(strategy_plugin_mounts_json=None):
+def install_stub_modules(strategy_plugin_mounts_json=None, notify_lang="en"):
     flask_module = types.ModuleType("flask")
 
     class Flask:
@@ -48,6 +48,7 @@ def install_stub_modules(strategy_plugin_mounts_json=None):
 
     requests_module = types.ModuleType("requests")
     requests_module.post = lambda *args, **kwargs: None
+    pandas_module = types.ModuleType("pandas")
 
     rebalance_service_module = types.ModuleType("application.rebalance_service")
     rebalance_service_module.run_strategy_core = lambda *args, **kwargs: None
@@ -60,7 +61,7 @@ def install_stub_modules(strategy_plugin_mounts_json=None):
         strategy_profile="tqqq_growth_income",
         strategy_display_name="TQQQ Growth Income",
         strategy_domain="us_equity",
-        notify_lang="en",
+        notify_lang=notify_lang,
         dry_run_only=False,
         strategy_plugin_mounts_json=strategy_plugin_mounts_json,
     )
@@ -102,6 +103,7 @@ def install_stub_modules(strategy_plugin_mounts_json=None):
     modules = {
         "flask": flask_module,
         "requests": requests_module,
+        "pandas": pandas_module,
         "application.rebalance_service": rebalance_service_module,
         "entrypoints.cloud_run": cloud_run_module,
         "runtime_config_support": runtime_config_support_module,
@@ -119,8 +121,11 @@ def install_stub_modules(strategy_plugin_mounts_json=None):
     return patch.dict(sys.modules, modules)
 
 
-def load_module(*, strategy_plugin_mounts_json=None):
-    with install_stub_modules(strategy_plugin_mounts_json=strategy_plugin_mounts_json):
+def load_module(*, strategy_plugin_mounts_json=None, notify_lang="en"):
+    with install_stub_modules(
+        strategy_plugin_mounts_json=strategy_plugin_mounts_json,
+        notify_lang=notify_lang,
+    ):
         with patch.dict(
             os.environ,
             {
@@ -282,6 +287,23 @@ class RequestHandlingTests(unittest.TestCase):
         self.assertEqual(plugin_summary["effective_mode"], "shadow")
         self.assertEqual(plugin_summary["canonical_route"], "no_action")
         self.assertEqual(plugin_summary["suggested_action"], "monitor")
+
+    def test_strategy_plugin_notification_line_uses_i18n(self):
+        module = load_module(notify_lang="zh")
+        signal = types.SimpleNamespace(
+            plugin="crisis_response_shadow",
+            effective_mode="shadow",
+            canonical_route="no_action",
+            suggested_action="watch_only",
+        )
+
+        lines = module.build_strategy_plugin_notification_lines((signal,))
+
+        self.assertEqual(len(lines), 1)
+        self.assertIn("插件：危机响应观察", lines[0])
+        self.assertIn("模式：影子观察", lines[0])
+        self.assertIn("路由：不操作", lines[0])
+        self.assertIn("建议：仅观察", lines[0])
 
     def test_handle_schwab_reports_plugin_config_error_without_blocking_strategy(self):
         mount_config = json.dumps(
