@@ -19,7 +19,6 @@ SWITCH_PLAN_SCRIPT_PATH = ROOT / "scripts" / "print_strategy_switch_env_plan.py"
 
 from runtime_config_support import (  # noqa: E402
     DEFAULT_NOTIFY_LANG,
-    DEFAULT_STRATEGY_PROFILE,
     load_platform_runtime_settings,
 )
 from strategy_registry import (
@@ -32,12 +31,15 @@ from strategy_registry import (
 )
 
 
+SAMPLE_STRATEGY_PROFILE = "tqqq_growth_income"
+
+
 class RuntimeConfigSupportTests(unittest.TestCase):
-    def test_defaults(self):
-        with patch.dict(os.environ, {}, clear=True):
+    def test_defaults_with_explicit_strategy_profile(self):
+        with patch.dict(os.environ, {"STRATEGY_PROFILE": SAMPLE_STRATEGY_PROFILE}, clear=True):
             settings = load_platform_runtime_settings()
 
-        self.assertEqual(settings.strategy_profile, DEFAULT_STRATEGY_PROFILE)
+        self.assertEqual(settings.strategy_profile, SAMPLE_STRATEGY_PROFILE)
         self.assertEqual(settings.strategy_display_name, "TQQQ Growth Income")
         self.assertEqual(settings.strategy_domain, US_EQUITY_DOMAIN)
         self.assertEqual(settings.notify_lang, DEFAULT_NOTIFY_LANG)
@@ -47,11 +49,16 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         self.assertIsNone(settings.strategy_config_path)
         self.assertIsNone(settings.strategy_config_source)
 
+    def test_requires_strategy_profile(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(EnvironmentError, "STRATEGY_PROFILE is required"):
+                load_platform_runtime_settings()
+
     def test_uses_explicit_strategy_profile(self):
-        with patch.dict(os.environ, {"STRATEGY_PROFILE": DEFAULT_STRATEGY_PROFILE}, clear=True):
+        with patch.dict(os.environ, {"STRATEGY_PROFILE": SAMPLE_STRATEGY_PROFILE}, clear=True):
             settings = load_platform_runtime_settings()
 
-        self.assertEqual(settings.strategy_profile, DEFAULT_STRATEGY_PROFILE)
+        self.assertEqual(settings.strategy_profile, SAMPLE_STRATEGY_PROFILE)
 
     def test_rejects_unknown_strategy_profile(self):
         with patch.dict(os.environ, {"STRATEGY_PROFILE": "balanced_income"}, clear=True):
@@ -63,9 +70,10 @@ class RuntimeConfigSupportTests(unittest.TestCase):
             get_supported_profiles_for_platform(SCHWAB_PLATFORM),
             frozenset(
                 {
-                    DEFAULT_STRATEGY_PROFILE,
+                    SAMPLE_STRATEGY_PROFILE,
                     "dynamic_mega_leveraged_pullback",
                     "global_etf_rotation",
+                    "mega_cap_leader_rotation_aggressive",
                     "mega_cap_leader_rotation_dynamic_top20",
                     "russell_1000_multi_factor_defensive",
                     "soxl_soxx_trend_income",
@@ -79,9 +87,10 @@ class RuntimeConfigSupportTests(unittest.TestCase):
             get_eligible_profiles_for_platform(SCHWAB_PLATFORM),
             frozenset(
                 {
-                    DEFAULT_STRATEGY_PROFILE,
+                    SAMPLE_STRATEGY_PROFILE,
                     "dynamic_mega_leveraged_pullback",
                     "global_etf_rotation",
+                    "mega_cap_leader_rotation_aggressive",
                     "mega_cap_leader_rotation_dynamic_top20",
                     "russell_1000_multi_factor_defensive",
                     "soxl_soxx_trend_income",
@@ -96,16 +105,21 @@ class RuntimeConfigSupportTests(unittest.TestCase):
                 load_platform_runtime_settings()
 
     def test_reads_schwab_dry_run_only_flag(self):
-        with patch.dict(os.environ, {"SCHWAB_DRY_RUN_ONLY": "true"}, clear=True):
+        with patch.dict(
+            os.environ,
+            {"STRATEGY_PROFILE": SAMPLE_STRATEGY_PROFILE, "SCHWAB_DRY_RUN_ONLY": "true"},
+            clear=True,
+        ):
             settings = load_platform_runtime_settings()
 
         self.assertTrue(settings.dry_run_only)
 
-    def test_platform_profile_matrix_marks_default(self):
+    def test_platform_profile_matrix_exposes_profiles_without_selection_roles(self):
         rows = get_platform_profile_matrix()
         by_profile = {row["canonical_profile"]: row for row in rows}
-        self.assertEqual(by_profile[DEFAULT_STRATEGY_PROFILE]["display_name"], "TQQQ Growth Income")
-        self.assertTrue(by_profile[DEFAULT_STRATEGY_PROFILE]["is_default"])
+        self.assertEqual(by_profile[SAMPLE_STRATEGY_PROFILE]["display_name"], "TQQQ Growth Income")
+        self.assertNotIn("is_default", by_profile[SAMPLE_STRATEGY_PROFILE])
+        self.assertNotIn("is_rollback", by_profile[SAMPLE_STRATEGY_PROFILE])
         self.assertIn("soxl_soxx_trend_income", by_profile)
         self.assertIn("global_etf_rotation", by_profile)
         self.assertIn("russell_1000_multi_factor_defensive", by_profile)
@@ -122,6 +136,7 @@ class RuntimeConfigSupportTests(unittest.TestCase):
                 "tqqq_growth_income",
                 "dynamic_mega_leveraged_pullback",
                 "global_etf_rotation",
+                "mega_cap_leader_rotation_aggressive",
                 "mega_cap_leader_rotation_dynamic_top20",
                 "russell_1000_multi_factor_defensive",
                 "soxl_soxx_trend_income",
@@ -136,8 +151,6 @@ class RuntimeConfigSupportTests(unittest.TestCase):
                 "domain": "us_equity",
                 "eligible": True,
                 "enabled": True,
-                "is_default": True,
-                "is_rollback": True,
                 "platform": "schwab",
             },
         )
@@ -197,8 +210,6 @@ class RuntimeConfigSupportTests(unittest.TestCase):
                         "domain",
                         "eligible",
                         "enabled",
-                        "is_default",
-                        "is_rollback",
                         "platform",
                     )
                 }

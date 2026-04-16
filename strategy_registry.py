@@ -22,9 +22,6 @@ from quant_platform_kit.common.strategies import (
 
 SCHWAB_PLATFORM = "schwab"
 
-DEFAULT_STRATEGY_PROFILE = "tqqq_growth_income"
-ROLLBACK_STRATEGY_PROFILE = DEFAULT_STRATEGY_PROFILE
-
 SCHWAB_ROLLOUT_ALLOWLIST = get_runtime_enabled_profiles()
 
 PLATFORM_SUPPORTED_DOMAINS: dict[str, frozenset[str]] = {
@@ -70,11 +67,17 @@ PLATFORM_POLICY = PlatformStrategyPolicy(
     platform_id=SCHWAB_PLATFORM,
     supported_domains=PLATFORM_SUPPORTED_DOMAINS[SCHWAB_PLATFORM],
     enabled_profiles=SCHWAB_ENABLED_PROFILES,
-    default_profile=DEFAULT_STRATEGY_PROFILE,
-    rollback_profile=ROLLBACK_STRATEGY_PROFILE,
+    default_profile="",
+    rollback_profile="",
+    require_explicit_profile=True,
 )
 
 SUPPORTED_STRATEGY_PROFILES = SCHWAB_ENABLED_PROFILES
+_SELECTION_ROLE_FIELDS = frozenset({"is_default", "is_rollback"})
+
+
+def _without_selection_role_fields(row: dict[str, object]) -> dict[str, object]:
+    return {key: value for key, value in row.items() if key not in _SELECTION_ROLE_FIELDS}
 
 
 def get_eligible_profiles_for_platform(platform_id: str) -> frozenset[str]:
@@ -88,15 +91,21 @@ def get_supported_profiles_for_platform(platform_id: str) -> frozenset[str]:
 
 
 def get_platform_profile_matrix() -> list[dict[str, object]]:
-    return build_platform_profile_matrix(STRATEGY_CATALOG, policy=PLATFORM_POLICY)
+    return [
+        _without_selection_role_fields(row)
+        for row in build_platform_profile_matrix(STRATEGY_CATALOG, policy=PLATFORM_POLICY)
+    ]
 
 
 def get_platform_profile_status_matrix() -> list[dict[str, object]]:
-    return build_platform_profile_status_matrix(
-        STRATEGY_CATALOG,
-        policy=PLATFORM_POLICY,
-        eligible_profiles=ELIGIBLE_STRATEGY_PROFILES,
-    )
+    return [
+        _without_selection_role_fields(row)
+        for row in build_platform_profile_status_matrix(
+            STRATEGY_CATALOG,
+            policy=PLATFORM_POLICY,
+            eligible_profiles=ELIGIBLE_STRATEGY_PROFILES,
+        )
+    ]
 
 
 def resolve_strategy_definition(

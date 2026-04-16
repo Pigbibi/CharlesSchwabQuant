@@ -43,8 +43,6 @@ def _print_table(rows: list[dict[str, object]]) -> None:
         "requires_strategy_config_path",
         "eligible",
         "enabled",
-        "is_default",
-        "is_rollback",
         "domain",
     )
     widths = {

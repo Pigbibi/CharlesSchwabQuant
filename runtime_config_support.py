@@ -6,14 +6,12 @@ from pathlib import Path
 
 from quant_platform_kit.common.strategies import derive_strategy_artifact_paths
 from strategy_registry import (
-    DEFAULT_STRATEGY_PROFILE as REGISTRY_DEFAULT_STRATEGY_PROFILE,
     SCHWAB_PLATFORM,
     resolve_strategy_definition,
     resolve_strategy_metadata,
 )
 from us_equity_strategies import get_strategy_catalog
 
-DEFAULT_STRATEGY_PROFILE = REGISTRY_DEFAULT_STRATEGY_PROFILE
 DEFAULT_NOTIFY_LANG = "en"
 
 
