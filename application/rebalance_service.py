@@ -237,6 +237,7 @@ def run_strategy_core(
     target_values = dict(allocation["targets"])
     threshold = float(execution["trade_threshold_value"])
     cash_sweep_symbol = str(portfolio["cash_sweep_symbol"])
+    dry_run_sale_events = []
     buy_order_symbols = tuple(
         allocation.get("income_symbols", ()) + allocation.get("risk_symbols", ())
     )
@@ -269,33 +270,57 @@ def run_strategy_core(
                 continue
             if execute_fire_forget(symbol, "SELL", quantity):
                 sell_executed = True
+                if dry_run_only:
+                    dry_run_sale_events.append(
+                        (symbol, quantity, quantity * quotes[symbol]["lastPrice"])
+                    )
 
     if sell_executed:
-        previous_buying_power = buying_power_from_plan(portfolio, execution)
-        refresh_attempts = max(1, int(post_sell_refresh_attempts or 1))
-        refresh_interval = max(0.0, float(post_sell_refresh_interval_sec or 0.0))
-        best_refreshed_state = None
-        best_buying_power = previous_buying_power
-        for attempt in range(refresh_attempts):
-            sleeper(sell_settle_delay_sec if attempt == 0 else refresh_interval)
-            snapshot = fetch_managed_snapshot(client)
-            refreshed_state = load_plan(snapshot)
-            refreshed_buying_power = buying_power_from_plan(
-                refreshed_state[1],
-                refreshed_state[2],
-            )
-            if best_refreshed_state is None or refreshed_buying_power > best_buying_power:
-                best_refreshed_state = refreshed_state
-                best_buying_power = refreshed_buying_power
-            if refreshed_buying_power > previous_buying_power:
-                best_refreshed_state = refreshed_state
-                break
-        plan, portfolio, execution, allocation = best_refreshed_state
-        strategy_symbols = tuple(allocation["strategy_symbols"])
-        quotes = load_quotes(strategy_symbols)
-        market_values = dict(portfolio["market_values"])
-        target_values = dict(allocation["targets"])
-        threshold = float(execution["trade_threshold_value"])
+        if dry_run_only:
+            virtual_market_values = dict(portfolio["market_values"])
+            virtual_quantities = dict(portfolio["quantities"])
+            virtual_sale_proceeds = 0.0
+            for symbol, quantity, sale_value in dry_run_sale_events:
+                virtual_sale_proceeds += sale_value
+                virtual_market_values[symbol] = max(
+                    0.0,
+                    float(virtual_market_values.get(symbol, 0.0)) - sale_value,
+                )
+                virtual_quantities[symbol] = max(
+                    0,
+                    int(virtual_quantities.get(symbol, 0)) - quantity,
+                )
+            portfolio = dict(portfolio)
+            portfolio["market_values"] = virtual_market_values
+            portfolio["quantities"] = virtual_quantities
+            portfolio["liquid_cash"] = float(portfolio["liquid_cash"]) + virtual_sale_proceeds
+            market_values = dict(portfolio["market_values"])
+        else:
+            previous_buying_power = buying_power_from_plan(portfolio, execution)
+            refresh_attempts = max(1, int(post_sell_refresh_attempts or 1))
+            refresh_interval = max(0.0, float(post_sell_refresh_interval_sec or 0.0))
+            best_refreshed_state = None
+            best_buying_power = previous_buying_power
+            for attempt in range(refresh_attempts):
+                sleeper(sell_settle_delay_sec if attempt == 0 else refresh_interval)
+                snapshot = fetch_managed_snapshot(client)
+                refreshed_state = load_plan(snapshot)
+                refreshed_buying_power = buying_power_from_plan(
+                    refreshed_state[1],
+                    refreshed_state[2],
+                )
+                if best_refreshed_state is None or refreshed_buying_power > best_buying_power:
+                    best_refreshed_state = refreshed_state
+                    best_buying_power = refreshed_buying_power
+                if refreshed_buying_power > previous_buying_power:
+                    best_refreshed_state = refreshed_state
+                    break
+            plan, portfolio, execution, allocation = best_refreshed_state
+            strategy_symbols = tuple(allocation["strategy_symbols"])
+            quotes = load_quotes(strategy_symbols)
+            market_values = dict(portfolio["market_values"])
+            target_values = dict(allocation["targets"])
+            threshold = float(execution["trade_threshold_value"])
 
     liquid_cash = float(portfolio["liquid_cash"])
     reserved_cash = float(execution["reserved_cash"])
