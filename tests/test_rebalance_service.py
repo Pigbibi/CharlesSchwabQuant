@@ -238,6 +238,92 @@ class RebalanceServiceTests(unittest.TestCase):
         self.assertTrue(sent_messages)
         self.assertIn("strategy=TQQQ Growth Income", sent_messages[0])
 
+    def test_run_strategy_core_adds_plugin_context_to_heartbeat(self):
+        sent_messages = []
+        snapshot = SimpleNamespace(
+            positions=(
+                SimpleNamespace(symbol="TQQQ", quantity=100, market_value=10000.0),
+                SimpleNamespace(symbol="BOXX", quantity=100, market_value=10000.0),
+            ),
+            total_equity=20000.0,
+            buying_power=0.0,
+            metadata={"account_hash": "demo"},
+        )
+        quote_snapshots = {
+            "TQQQ": SimpleNamespace(last_price=100.0, ask_price=100.0),
+            "BOXX": SimpleNamespace(last_price=100.0, ask_price=100.0),
+        }
+        plan = {
+            "strategy_profile": "tqqq_growth_income",
+            "account_hash": "demo",
+            "allocation": {
+                "target_mode": "value",
+                "strategy_symbols": ("TQQQ", "BOXX"),
+                "risk_symbols": ("TQQQ",),
+                "income_symbols": (),
+                "safe_haven_symbols": ("BOXX",),
+                "targets": {"TQQQ": 10000.0, "BOXX": 10000.0},
+            },
+            "portfolio": {
+                "strategy_symbols": ("TQQQ", "BOXX"),
+                "portfolio_rows": (("TQQQ", "BOXX"),),
+                "market_values": {"TQQQ": 10000.0, "BOXX": 10000.0},
+                "quantities": {"TQQQ": 100, "BOXX": 100},
+                "total_equity": 20000.0,
+                "liquid_cash": 0.0,
+                "cash_sweep_symbol": "BOXX",
+            },
+            "execution": {
+                "trade_threshold_value": 500.0,
+                "reserved_cash": 0.0,
+                "signal_display": "Hold",
+                "dashboard_text": "",
+                "separator": "-----",
+                "benchmark_symbol": "QQQ",
+                "benchmark_price": 0.0,
+                "long_trend_value": 0.0,
+                "exit_line": 0.0,
+            },
+        }
+        translations = {
+            "heartbeat_header": "heartbeat",
+            "strategy_label": "strategy={name}",
+            "signal_label": "signal",
+            "equity": "equity",
+            "no_trades": "no trades",
+        }
+
+        def fail_submit(*_args, **_kwargs):
+            raise AssertionError("no orders should be submitted for heartbeat")
+
+        run_strategy_core(
+            object(),
+            None,
+            fetch_reference_history=lambda client: [{"close": 1.0, "high": 1.0, "low": 1.0}],
+            fetch_managed_snapshot=lambda client: snapshot,
+            fetch_managed_quotes=lambda client: quote_snapshots,
+            resolve_rebalance_plan=lambda *, qqq_history, snapshot: plan,
+            submit_equity_order=fail_submit,
+            send_tg_message=sent_messages.append,
+            translator=lambda key, **kwargs: translations.get(key, key).format(**kwargs)
+            if kwargs
+            else translations.get(key, key),
+            strategy_display_name="TQQQ Growth Income",
+            limit_buy_premium=1.005,
+            sell_settle_delay_sec=0,
+            extra_notification_lines=(
+                "Plugin crisis_response_shadow [shadow] no_action -> monitor",
+            ),
+        )
+
+        self.assertEqual(len(sent_messages), 1)
+        self.assertIn("heartbeat", sent_messages[0])
+        self.assertIn(
+            "Plugin crisis_response_shadow [shadow] no_action -> monitor",
+            sent_messages[0],
+        )
+        self.assertIn("no trades", sent_messages[0])
+
     def test_run_strategy_core_refreshes_buying_power_after_sell_before_buying(self):
         sent_messages = []
         submitted_orders = []

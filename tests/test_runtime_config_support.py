@@ -48,6 +48,7 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         self.assertIsNone(settings.feature_snapshot_manifest_path)
         self.assertIsNone(settings.strategy_config_path)
         self.assertIsNone(settings.strategy_config_source)
+        self.assertIsNone(settings.strategy_plugin_mounts_json)
 
     def test_requires_strategy_profile(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -113,6 +114,36 @@ class RuntimeConfigSupportTests(unittest.TestCase):
             settings = load_platform_runtime_settings()
 
         self.assertTrue(settings.dry_run_only)
+
+    def test_reads_strategy_plugin_mounts_from_global_env(self):
+        with patch.dict(
+            os.environ,
+            {
+                "STRATEGY_PROFILE": SAMPLE_STRATEGY_PROFILE,
+                "STRATEGY_PLUGIN_MOUNTS_JSON": '{"strategy_plugins":[]}',
+            },
+            clear=True,
+        ):
+            settings = load_platform_runtime_settings()
+
+        self.assertEqual(settings.strategy_plugin_mounts_json, '{"strategy_plugins":[]}')
+
+    def test_schwab_strategy_plugin_mounts_env_overrides_global_env(self):
+        with patch.dict(
+            os.environ,
+            {
+                "STRATEGY_PROFILE": SAMPLE_STRATEGY_PROFILE,
+                "STRATEGY_PLUGIN_MOUNTS_JSON": '{"strategy_plugins":[{"plugin":"global"}]}',
+                "SCHWAB_STRATEGY_PLUGIN_MOUNTS_JSON": '{"strategy_plugins":[{"plugin":"schwab"}]}',
+            },
+            clear=True,
+        ):
+            settings = load_platform_runtime_settings()
+
+        self.assertEqual(
+            settings.strategy_plugin_mounts_json,
+            '{"strategy_plugins":[{"plugin":"schwab"}]}',
+        )
 
     def test_platform_profile_matrix_exposes_profiles_without_selection_roles(self):
         rows = get_platform_profile_matrix()

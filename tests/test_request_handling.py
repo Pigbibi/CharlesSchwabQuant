@@ -1,6 +1,8 @@
 import importlib
+import json
 import os
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -15,7 +17,7 @@ if str(PLATFORM_KIT_SRC) not in sys.path:
     sys.path.insert(0, str(PLATFORM_KIT_SRC))
 
 
-def install_stub_modules():
+def install_stub_modules(strategy_plugin_mounts_json=None):
     flask_module = types.ModuleType("flask")
 
     class Flask:
@@ -60,6 +62,7 @@ def install_stub_modules():
         strategy_domain="us_equity",
         notify_lang="en",
         dry_run_only=False,
+        strategy_plugin_mounts_json=strategy_plugin_mounts_json,
     )
 
     strategy_runtime_module = types.ModuleType("strategy_runtime")
@@ -116,8 +119,8 @@ def install_stub_modules():
     return patch.dict(sys.modules, modules)
 
 
-def load_module():
-    with install_stub_modules():
+def load_module(*, strategy_plugin_mounts_json=None):
+    with install_stub_modules(strategy_plugin_mounts_json=strategy_plugin_mounts_json):
         with patch.dict(
             os.environ,
             {
@@ -152,7 +155,7 @@ class RequestHandlingTests(unittest.TestCase):
         module.get_client_from_secret = lambda *args, **kwargs: object()
         module.is_market_open_today = lambda: True
 
-        def fake_run_strategy_core(client, now_ny):
+        def fake_run_strategy_core(client, now_ny, **_kwargs):
             observed["called"] = True
             self.assertIsNotNone(client)
             self.assertIsNone(now_ny)
@@ -213,6 +216,108 @@ class RequestHandlingTests(unittest.TestCase):
         self.assertEqual(
             observed["report"]["summary"]["managed_symbols"],
             ["TQQQ", "BOXX", "SPYI", "QQQI"],
+        )
+
+    def test_handle_schwab_attaches_strategy_plugin_report(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            signal_path = Path(temp_dir) / "latest_signal.json"
+            signal_path.write_text(
+                json.dumps(
+                    {
+                        "strategy": "tqqq_growth_income",
+                        "plugin": "crisis_response_shadow",
+                        "mode": "shadow",
+                        "configured_mode": "shadow",
+                        "effective_mode": "shadow",
+                        "schema_version": "crisis_response_shadow.v1",
+                        "as_of": "2026-04-17",
+                        "canonical_route": "no_action",
+                        "suggested_action": "monitor",
+                        "would_trade_if_enabled": False,
+                        "execution_controls": {
+                            "broker_order_allowed": False,
+                            "live_allocation_mutation_allowed": False,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mount_config = json.dumps(
+                {
+                    "strategy_plugins": [
+                        {
+                            "strategy": "tqqq_growth_income",
+                            "plugin": "crisis_response_shadow",
+                            "signal_path": str(signal_path),
+                            "enabled": True,
+                        }
+                    ]
+                }
+            )
+            module = load_module(strategy_plugin_mounts_json=mount_config)
+            observed = {}
+
+            module.get_client_from_secret = lambda *args, **kwargs: object()
+            module.is_market_open_today = lambda: True
+            module.persist_execution_report = (
+                lambda report: observed.setdefault("report", report) or "/tmp/report.json"
+            )
+
+            def fake_run_strategy_core(client, now_ny, *, strategy_plugin_signals=()):
+                observed["signals"] = strategy_plugin_signals
+                self.assertIsNotNone(client)
+                self.assertIsNone(now_ny)
+
+            module.run_strategy_core = fake_run_strategy_core
+
+            with module.app.test_request_context("/", method="POST"):
+                body, status = module.handle_schwab()
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body, "OK")
+        self.assertEqual(len(observed["signals"]), 1)
+        plugin_summary = observed["report"]["summary"]["strategy_plugins"][0]
+        self.assertEqual(plugin_summary["strategy"], "tqqq_growth_income")
+        self.assertEqual(plugin_summary["plugin"], "crisis_response_shadow")
+        self.assertEqual(plugin_summary["effective_mode"], "shadow")
+        self.assertEqual(plugin_summary["canonical_route"], "no_action")
+        self.assertEqual(plugin_summary["suggested_action"], "monitor")
+
+    def test_handle_schwab_reports_plugin_config_error_without_blocking_strategy(self):
+        mount_config = json.dumps(
+            {
+                "strategy_plugins": [
+                    {
+                        "strategy": "tqqq_growth_income",
+                        "plugin": "crisis_response_shadow",
+                        "mode": "shadow",
+                        "signal_path": "/tmp/missing_signal.json",
+                    }
+                ]
+            }
+        )
+        module = load_module(strategy_plugin_mounts_json=mount_config)
+        observed = {"called": False}
+
+        module.get_client_from_secret = lambda *args, **kwargs: object()
+        module.is_market_open_today = lambda: True
+        module.persist_execution_report = lambda report: observed.setdefault("report", report) or "/tmp/report.json"
+
+        def fake_run_strategy_core(client, now_ny, *, strategy_plugin_signals=()):
+            observed["called"] = True
+            self.assertEqual(strategy_plugin_signals, ())
+
+        module.run_strategy_core = fake_run_strategy_core
+
+        with module.app.test_request_context("/", method="POST"):
+            body, status = module.handle_schwab()
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body, "OK")
+        self.assertTrue(observed["called"])
+        self.assertIn(
+            "platform plugin mount config must not set mode",
+            observed["report"]["diagnostics"]["strategy_plugin_error"],
         )
 
     def test_build_account_state_from_snapshot_uses_strategy_symbols(self):

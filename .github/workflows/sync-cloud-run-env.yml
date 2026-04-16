@@ -29,6 +29,7 @@ jobs:
       SCHWAB_FEATURE_SNAPSHOT_PATH: ${{ vars.SCHWAB_FEATURE_SNAPSHOT_PATH }}
       SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH: ${{ vars.SCHWAB_FEATURE_SNAPSHOT_MANIFEST_PATH }}
       SCHWAB_STRATEGY_CONFIG_PATH: ${{ vars.SCHWAB_STRATEGY_CONFIG_PATH }}
+      SCHWAB_STRATEGY_PLUGIN_MOUNTS_JSON: ${{ vars.SCHWAB_STRATEGY_PLUGIN_MOUNTS_JSON }}
       INCOME_THRESHOLD_USD: ${{ vars.INCOME_THRESHOLD_USD }}
       QQQI_INCOME_RATIO: ${{ vars.QQQI_INCOME_RATIO }}
       EXECUTION_REPORT_GCS_URI: ${{ vars.EXECUTION_REPORT_GCS_URI }}
@@ -266,6 +267,12 @@ jobs:
             remove_env_vars+=("SCHWAB_STRATEGY_CONFIG_PATH")
           fi
 
+          if [ -n "${SCHWAB_STRATEGY_PLUGIN_MOUNTS_JSON:-}" ]; then
+            env_pairs+=("SCHWAB_STRATEGY_PLUGIN_MOUNTS_JSON=${SCHWAB_STRATEGY_PLUGIN_MOUNTS_JSON}")
+          else
+            remove_env_vars+=("SCHWAB_STRATEGY_PLUGIN_MOUNTS_JSON")
+          fi
+
           if [ -n "${INCOME_THRESHOLD_USD:-}" ]; then
             env_pairs+=("INCOME_THRESHOLD_USD=${INCOME_THRESHOLD_USD}")
           fi
@@ -290,11 +297,26 @@ jobs:
             env_pairs+=("GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}")
           fi
 
+          join_by_delimiter() {
+            local delimiter="$1"
+            shift
+            local output=""
+            local item
+            for item in "$@"; do
+              if [ -z "${output}" ]; then
+                output="${item}"
+              else
+                output="${output}${delimiter}${item}"
+              fi
+            done
+            printf '%s' "${output}"
+          }
+
           gcloud_args=(
             run services update "${CLOUD_RUN_SERVICE}"
             --region "${CLOUD_RUN_REGION}"
             --remove-env-vars "$(IFS=,; echo "${remove_env_vars[*]}")"
-            --update-env-vars "$(IFS=,; echo "${env_pairs[*]}")"
+            --update-env-vars "^|^$(join_by_delimiter "|" "${env_pairs[@]}")"
           )
 
           if [ "${#remove_secret_vars[@]}" -gt 0 ]; then

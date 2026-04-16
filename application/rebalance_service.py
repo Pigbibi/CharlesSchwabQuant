@@ -100,6 +100,7 @@ def run_strategy_core(
     post_sell_refresh_attempts=1,
     post_sell_refresh_interval_sec=0.0,
     sleeper=_noop_sleep,
+    extra_notification_lines=(),
 ):
     del now_ny
 
@@ -302,6 +303,11 @@ def run_strategy_core(
 
     signal_display = _localize_notification_text(execution["signal_display"], translator=translator)
     status_display = _localize_notification_text(execution.get("status_display"), translator=translator)
+    extra_notification_block = "\n".join(
+        str(line).strip() for line in extra_notification_lines if str(line).strip()
+    )
+    if extra_notification_block:
+        extra_notification_block = f"{extra_notification_block}\n"
     dashboard_text = str(execution["dashboard_text"])
     separator = str(execution["separator"])
     total_equity = float(portfolio["total_equity"])
@@ -322,6 +328,7 @@ def run_strategy_core(
             f"{translator('trade_header')}\n"
             f"{translator('strategy_label', name=strategy_display_name)}\n"
             f"{dry_run_line}"
+            f"{extra_notification_block}"
             f"{status_line}"
             f"📊 {translator('signal_label')}: {signal_display}\n\n"
             f"{dashboard_block}"
@@ -339,6 +346,7 @@ def run_strategy_core(
         no_trade_message = (
             f"{translator('heartbeat_header')}\n"
             f"{translator('strategy_label', name=strategy_display_name)}\n"
+            f"{extra_notification_block}"
             f"💰 {translator('equity')}: ${total_equity:,.2f}\n"
             f"{separator}\n"
             + "\n".join(holdings_lines) + "\n"

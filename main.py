@@ -28,6 +28,11 @@ from quant_platform_kit.common.runtime_reports import (
     finalize_runtime_report,
     persist_runtime_report,
 )
+from quant_platform_kit.common.strategy_plugins import (
+    build_strategy_plugin_report_payload,
+    load_configured_strategy_plugin_signals,
+    parse_strategy_plugin_mounts,
+)
 from quant_platform_kit.strategy_contracts import (
     build_account_state_from_portfolio_snapshot,
     build_strategy_evaluation_inputs,
@@ -167,6 +172,43 @@ def build_execution_report(log_context):
             "strategy_display_name_localized": strategy_display_name,
         },
     )
+
+
+def load_strategy_plugin_signals():
+    raw_mounts = getattr(RUNTIME_SETTINGS, "strategy_plugin_mounts_json", None)
+    if not raw_mounts:
+        return (), None
+    try:
+        mounts = parse_strategy_plugin_mounts(raw_mounts)
+        if not mounts:
+            return (), None
+        return (
+            load_configured_strategy_plugin_signals(
+                mounts,
+                strategy_profile=STRATEGY_PROFILE,
+            ),
+            None,
+        )
+    except Exception as exc:
+        return (), f"{type(exc).__name__}: {exc}"
+
+
+def attach_strategy_plugin_report(report, *, signals, error: str | None = None):
+    if signals:
+        report.setdefault("summary", {}).update(build_strategy_plugin_report_payload(signals))
+    if error:
+        report.setdefault("diagnostics", {})["strategy_plugin_error"] = error
+
+
+def build_strategy_plugin_notification_lines(signals) -> tuple[str, ...]:
+    lines = []
+    for signal in signals:
+        route = signal.canonical_route or "unknown_route"
+        action = signal.suggested_action or "unknown_action"
+        lines.append(
+            f"Plugin {signal.plugin} [{signal.effective_mode}] {route} -> {action}"
+        )
+    return tuple(lines)
 
 
 def persist_execution_report(report):
@@ -311,7 +353,7 @@ def resolve_rebalance_plan(*, qqq_history, snapshot):
     return plan
 
 
-def run_strategy_core(c, now_ny):
+def run_strategy_core(c, now_ny, *, strategy_plugin_signals=()):
     return run_rebalance_cycle(
         c,
         now_ny,
@@ -329,6 +371,7 @@ def run_strategy_core(c, now_ny):
         post_sell_refresh_attempts=POST_SELL_REFRESH_ATTEMPTS,
         post_sell_refresh_interval_sec=POST_SELL_REFRESH_INTERVAL_SEC,
         sleeper=time.sleep,
+        extra_notification_lines=build_strategy_plugin_notification_lines(strategy_plugin_signals),
     )
 
 
@@ -336,6 +379,12 @@ def run_strategy_core(c, now_ny):
 def handle_schwab():
     log_context = RUNTIME_LOG_CONTEXT.with_run(build_run_id())
     report = build_execution_report(log_context)
+    strategy_plugin_signals, strategy_plugin_error = load_strategy_plugin_signals()
+    attach_strategy_plugin_report(
+        report,
+        signals=strategy_plugin_signals,
+        error=strategy_plugin_error,
+    )
     try:
         log_runtime_event(
             log_context,
@@ -360,7 +409,7 @@ def handle_schwab():
             "strategy_cycle_started",
             message="Starting strategy execution",
         )
-        run_strategy_core(c, None)
+        run_strategy_core(c, None, strategy_plugin_signals=strategy_plugin_signals)
         finalize_runtime_report(report, status="ok")
         log_runtime_event(
             log_context,
