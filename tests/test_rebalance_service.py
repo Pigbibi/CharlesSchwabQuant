@@ -340,10 +340,10 @@ class RebalanceServiceTests(unittest.TestCase):
             SimpleNamespace(
                 positions=(
                     SimpleNamespace(symbol="TQQQ", quantity=0, market_value=0.0),
-                    SimpleNamespace(symbol="BOXX", quantity=1, market_value=100.0),
+                    SimpleNamespace(symbol="BOXX", quantity=2, market_value=200.0),
                 ),
                 total_equity=1200.0,
-                buying_power=1024.0,
+                buying_power=924.0,
                 metadata={"account_hash": "demo", "phase": "after_sell"},
             ),
         ]
@@ -389,10 +389,10 @@ class RebalanceServiceTests(unittest.TestCase):
             "portfolio": {
                 "strategy_symbols": ("TQQQ", "BOXX"),
                 "portfolio_rows": (("TQQQ", "BOXX"),),
-                "market_values": {"TQQQ": 0.0, "BOXX": 100.0},
-                "quantities": {"TQQQ": 0, "BOXX": 1},
+                "market_values": {"TQQQ": 0.0, "BOXX": 200.0},
+                "quantities": {"TQQQ": 0, "BOXX": 2},
                 "total_equity": 1200.0,
-                "liquid_cash": 1024.0,
+                "liquid_cash": 924.0,
                 "cash_sweep_symbol": "BOXX",
             },
         }
@@ -454,7 +454,7 @@ class RebalanceServiceTests(unittest.TestCase):
         self.assertEqual(len(submitted_orders), 2)
         self.assertEqual(submitted_orders[0].side, "sell")
         self.assertEqual(submitted_orders[0].symbol, "BOXX")
-        self.assertEqual(submitted_orders[0].quantity, 9)
+        self.assertEqual(submitted_orders[0].quantity, 8)
         self.assertEqual(submitted_orders[1].side, "buy")
         self.assertEqual(submitted_orders[1].symbol, "TQQQ")
         self.assertEqual(submitted_orders[1].quantity, 18)
@@ -557,7 +557,7 @@ class RebalanceServiceTests(unittest.TestCase):
         )
         quote_snapshots = {
             "TQQQ": SimpleNamespace(last_price=55.0, ask_price=55.0),
-            "QQQM": SimpleNamespace(last_price=263.0, ask_price=263.0),
+            "QQQM": SimpleNamespace(last_price=264.0, ask_price=264.0),
             "BOXX": SimpleNamespace(last_price=100.0, ask_price=100.0),
         }
         plan = {
@@ -631,8 +631,9 @@ class RebalanceServiceTests(unittest.TestCase):
         )
 
         self.assertTrue(sent_messages)
-        self.assertIn("模拟下单: sell BOXX: 5shares", sent_messages[0])
-        self.assertIn("模拟下单: limit buy QQQM ($263.00): 2shares", sent_messages[0])
+        self.assertIn("模拟下单: sell BOXX: 2shares", sent_messages[0])
+        self.assertIn("模拟下单: limit buy QQQM ($264.00): 1shares", sent_messages[0])
+        self.assertNotIn("buy BOXX", sent_messages[0])
 
     def test_run_strategy_core_retries_refresh_until_sold_cash_is_available(self):
         sent_messages = []
@@ -650,7 +651,7 @@ class RebalanceServiceTests(unittest.TestCase):
             SimpleNamespace(
                 positions=(
                     SimpleNamespace(symbol="TQQQ", quantity=0, market_value=0.0),
-                    SimpleNamespace(symbol="BOXX", quantity=1, market_value=100.0),
+                    SimpleNamespace(symbol="BOXX", quantity=2, market_value=200.0),
                 ),
                 total_equity=1200.0,
                 buying_power=124.0,
@@ -659,10 +660,10 @@ class RebalanceServiceTests(unittest.TestCase):
             SimpleNamespace(
                 positions=(
                     SimpleNamespace(symbol="TQQQ", quantity=0, market_value=0.0),
-                    SimpleNamespace(symbol="BOXX", quantity=1, market_value=100.0),
+                    SimpleNamespace(symbol="BOXX", quantity=2, market_value=200.0),
                 ),
                 total_equity=1200.0,
-                buying_power=1024.0,
+                buying_power=924.0,
                 metadata={"account_hash": "demo", "phase": "settled_after_sell"},
             ),
         ]
@@ -708,8 +709,8 @@ class RebalanceServiceTests(unittest.TestCase):
             "portfolio": {
                 "strategy_symbols": ("TQQQ", "BOXX"),
                 "portfolio_rows": (("TQQQ", "BOXX"),),
-                "market_values": {"TQQQ": 0.0, "BOXX": 100.0},
-                "quantities": {"TQQQ": 0, "BOXX": 1},
+                "market_values": {"TQQQ": 0.0, "BOXX": 200.0},
+                "quantities": {"TQQQ": 0, "BOXX": 2},
                 "total_equity": 1200.0,
                 "liquid_cash": 124.0,
                 "cash_sweep_symbol": "BOXX",
@@ -720,10 +721,10 @@ class RebalanceServiceTests(unittest.TestCase):
             "portfolio": {
                 "strategy_symbols": ("TQQQ", "BOXX"),
                 "portfolio_rows": (("TQQQ", "BOXX"),),
-                "market_values": {"TQQQ": 0.0, "BOXX": 100.0},
-                "quantities": {"TQQQ": 0, "BOXX": 1},
+                "market_values": {"TQQQ": 0.0, "BOXX": 200.0},
+                "quantities": {"TQQQ": 0, "BOXX": 2},
                 "total_equity": 1200.0,
-                "liquid_cash": 1024.0,
+                "liquid_cash": 924.0,
                 "cash_sweep_symbol": "BOXX",
             },
         }
@@ -791,7 +792,7 @@ class RebalanceServiceTests(unittest.TestCase):
         self.assertEqual(len(submitted_orders), 2)
         self.assertEqual(submitted_orders[0].side, "sell")
         self.assertEqual(submitted_orders[0].symbol, "BOXX")
-        self.assertEqual(submitted_orders[0].quantity, 9)
+        self.assertEqual(submitted_orders[0].quantity, 8)
         self.assertEqual(submitted_orders[1].side, "buy")
         self.assertEqual(submitted_orders[1].symbol, "TQQQ")
         self.assertEqual(submitted_orders[1].quantity, 18)

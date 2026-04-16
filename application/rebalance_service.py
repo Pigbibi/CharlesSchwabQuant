@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from quant_platform_kit.common.models import OrderIntent
 
 _ZH_REASON_REPLACEMENTS = (
@@ -242,18 +244,25 @@ def run_strategy_core(
         allocation.get("income_symbols", ()) + allocation.get("risk_symbols", ())
     )
 
-    def cash_sweep_sale_can_fund_buy(quantity):
-        sale_value = quantity * quotes[cash_sweep_symbol]["lastPrice"]
-        available_after_sale = buying_power_from_plan(portfolio, execution) + sale_value
+    def cash_sweep_sale_quantity_to_fund_buy(max_quantity):
+        cash_sweep_price = quotes[cash_sweep_symbol]["lastPrice"]
+        base_buying_power = buying_power_from_plan(portfolio, execution)
         for buy_symbol in buy_order_symbols:
             underweight_value = target_values[buy_symbol] - market_values[buy_symbol]
             if underweight_value <= threshold:
                 continue
             ask = quotes[buy_symbol]["askPrice"]
-            amount_to_spend = min(underweight_value, available_after_sale)
-            if int(amount_to_spend // ask) > 0:
-                return True
-        return False
+            max_buy_quantity = int(underweight_value // ask)
+            if max_buy_quantity <= 0:
+                continue
+            required_buying_power = max_buy_quantity * ask
+            if base_buying_power >= required_buying_power:
+                return 0
+            return min(
+                max_quantity,
+                max(1, math.ceil((required_buying_power - base_buying_power) / cash_sweep_price)),
+            )
+        return 0
 
     sell_order_symbols = tuple(
         allocation.get("risk_symbols", ())
@@ -266,8 +275,10 @@ def run_strategy_core(
         target = target_values[symbol]
         if current > (target + threshold):
             quantity = int((current - target) // quotes[symbol]["lastPrice"])
-            if symbol == cash_sweep_symbol and not cash_sweep_sale_can_fund_buy(quantity):
-                continue
+            if symbol == cash_sweep_symbol:
+                quantity = cash_sweep_sale_quantity_to_fund_buy(quantity)
+                if quantity <= 0:
+                    continue
             if execute_fire_forget(symbol, "SELL", quantity):
                 sell_executed = True
                 if dry_run_only:
