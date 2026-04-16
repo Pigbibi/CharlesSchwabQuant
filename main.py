@@ -70,8 +70,16 @@ def _optional_float_env(name: str) -> float | None:
     return float(value)
 
 
+def _optional_symbol_env(name: str) -> str | None:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return None
+    return value.strip().upper()
+
+
 INCOME_THRESHOLD_USD = _optional_float_env("INCOME_THRESHOLD_USD")
 QQQI_INCOME_RATIO = _optional_float_env("QQQI_INCOME_RATIO")
+DUAL_DRIVE_UNLEVERED_SYMBOL = _optional_symbol_env("DUAL_DRIVE_UNLEVERED_SYMBOL")
 
 # Order pricing: limit buy premium above ask price
 LIMIT_BUY_PREMIUM = 1.005
@@ -97,13 +105,25 @@ strategy_display_name = build_strategy_display_name(t)(
 LATEST_PLAN_STRATEGY_SYMBOLS: tuple[str, ...] = ()
 
 
-def build_strategy_runtime_overrides(profile: str) -> dict[str, float]:
-    overrides: dict[str, float] = {}
+def build_tqqq_managed_symbols(unlevered_symbol: str) -> tuple[str, ...]:
+    symbol = str(unlevered_symbol or "QQQ").strip().upper()
+    if not symbol:
+        raise ValueError("DUAL_DRIVE_UNLEVERED_SYMBOL must be a non-empty ticker")
+    if symbol in {"TQQQ", "BOXX", "SPYI", "QQQI"}:
+        raise ValueError("DUAL_DRIVE_UNLEVERED_SYMBOL must not overlap another TQQQ profile sleeve")
+    return ("TQQQ", symbol, "BOXX", "SPYI", "QQQI")
+
+
+def build_strategy_runtime_overrides(profile: str) -> dict[str, object]:
+    overrides: dict[str, object] = {}
     if profile == "tqqq_growth_income":
         if INCOME_THRESHOLD_USD is not None:
             overrides["income_threshold_usd"] = INCOME_THRESHOLD_USD
         if QQQI_INCOME_RATIO is not None:
             overrides["qqqi_income_ratio"] = QQQI_INCOME_RATIO
+        if DUAL_DRIVE_UNLEVERED_SYMBOL is not None:
+            overrides["dual_drive_unlevered_symbol"] = DUAL_DRIVE_UNLEVERED_SYMBOL
+            overrides["managed_symbols"] = build_tqqq_managed_symbols(DUAL_DRIVE_UNLEVERED_SYMBOL)
     return overrides
 
 

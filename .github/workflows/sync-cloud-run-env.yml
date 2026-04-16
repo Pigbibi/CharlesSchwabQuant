@@ -32,6 +32,7 @@ jobs:
       SCHWAB_STRATEGY_PLUGIN_MOUNTS_JSON: ${{ vars.SCHWAB_STRATEGY_PLUGIN_MOUNTS_JSON }}
       INCOME_THRESHOLD_USD: ${{ vars.INCOME_THRESHOLD_USD }}
       QQQI_INCOME_RATIO: ${{ vars.QQQI_INCOME_RATIO }}
+      DUAL_DRIVE_UNLEVERED_SYMBOL: ${{ vars.DUAL_DRIVE_UNLEVERED_SYMBOL }}
       EXECUTION_REPORT_GCS_URI: ${{ vars.EXECUTION_REPORT_GCS_URI }}
       GLOBAL_TELEGRAM_CHAT_ID: ${{ vars.GLOBAL_TELEGRAM_CHAT_ID }}
       NOTIFY_LANG: ${{ vars.NOTIFY_LANG }}
@@ -285,6 +286,12 @@ jobs:
 
           if [ -n "${QQQI_INCOME_RATIO:-}" ]; then
             env_pairs+=("QQQI_INCOME_RATIO=${QQQI_INCOME_RATIO}")
+          fi
+
+          if [ -n "${DUAL_DRIVE_UNLEVERED_SYMBOL:-}" ]; then
+            env_pairs+=("DUAL_DRIVE_UNLEVERED_SYMBOL=${DUAL_DRIVE_UNLEVERED_SYMBOL}")
+          else
+            remove_env_vars+=("DUAL_DRIVE_UNLEVERED_SYMBOL")
           fi
 
           if [ -n "${EXECUTION_REPORT_GCS_URI:-}" ]; then
