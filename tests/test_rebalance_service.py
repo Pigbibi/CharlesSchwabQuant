@@ -58,6 +58,24 @@ class RebalanceServiceTests(unittest.TestCase):
         assert "快照日期=无" in localized
         assert "SOXL/SOXX 半导体趋势收益" in localized
 
+    def test_format_dashboard_text_splits_inline_rows(self):
+        formatted = rebalance_service._format_dashboard_text(
+            (
+                "📊 资产看板 | 净值: $1,172.38\n"
+                "TQQQ: $506.79 | QQQM: $0.00 | BOXX: $581.80\n"
+                "SPYI: $0.00 | QQQI: $0.00\n"
+                "购买力: $83.79 | 信号: 💎 趋势持有\n"
+                "QQQ: 640.47 | MA200 Exit: 598.38 | MA20Δ: +2.28"
+            ),
+            translator=build_translator("zh"),
+        )
+
+        assert "📊 资产看板\n  - 净值: $1,172.38" in formatted
+        assert "💼 持仓\n  - TQQQ: $506.79\n  - QQQM: $0.00\n  - BOXX: $581.80" in formatted
+        assert "  - SPYI: $0.00\n  - QQQI: $0.00" in formatted
+        assert "  - 购买力: $83.79\n  - 信号: 💎 趋势持有" in formatted
+        assert "QQQM: $0.00 | BOXX" not in formatted
+
     def test_translator_localizes_semiconductor_trend_status_for_zh(self):
         translate = build_translator("zh")
         self.assertEqual(translate("market_status_risk_on", asset="SOXL"), "🚀 风险开启（SOXL）")

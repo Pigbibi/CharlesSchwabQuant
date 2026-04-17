@@ -119,6 +119,55 @@ def _localize_notification_text(text, *, translator):
     return localized
 
 
+def _is_holding_segment(segment: str) -> bool:
+    label, sep, value = str(segment or "").partition(":")
+    symbol = label.strip().replace(".", "").replace("-", "")
+    return bool(sep and symbol.isalnum() and "$" in value)
+
+
+def _format_inline_segments(line: str, *, translator, holdings_title_emitted: bool) -> tuple[list[str], bool]:
+    parts = [part.strip() for part in str(line or "").split(" | ") if part.strip()]
+    if len(parts) <= 1:
+        return [str(line or "").strip()], holdings_title_emitted
+
+    if all(_is_holding_segment(part) for part in parts):
+        lines = []
+        if not holdings_title_emitted:
+            lines.append(translator("holdings_title"))
+            holdings_title_emitted = True
+        lines.extend(f"  - {part}" for part in parts)
+        return lines, holdings_title_emitted
+
+    first, rest = parts[0], parts[1:]
+    if first.startswith(("📊", "💰", "💵")):
+        lines = [first]
+        lines.extend(f"  - {part}" for part in rest)
+        return lines, holdings_title_emitted
+    return [f"  - {part}" for part in parts], holdings_title_emitted
+
+
+def _format_dashboard_text(text: str, *, translator) -> str:
+    raw_lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+    formatted_lines: list[str] = []
+    holdings_title_emitted = False
+    for line in raw_lines:
+        expanded, holdings_title_emitted = _format_inline_segments(
+            line,
+            translator=translator,
+            holdings_title_emitted=holdings_title_emitted,
+        )
+        formatted_lines.extend(expanded)
+    return "\n".join(formatted_lines)
+
+
+def _format_holdings_lines(portfolio_rows, market_values, *, translator) -> list[str]:
+    lines = [translator("holdings_title")]
+    for row in portfolio_rows:
+        for symbol in row:
+            lines.append(f"  - {symbol}: ${market_values[symbol]:,.2f}")
+    return lines
+
+
 def run_strategy_core(
     client,
     now_ny,
@@ -401,7 +450,7 @@ def run_strategy_core(
     )
     if extra_notification_block:
         extra_notification_block = f"{extra_notification_block}\n"
-    dashboard_text = str(execution["dashboard_text"])
+    dashboard_text = _format_dashboard_text(str(execution["dashboard_text"]), translator=translator)
     separator = str(execution["separator"])
     total_equity = float(portfolio["total_equity"])
     portfolio_rows = tuple(portfolio["portfolio_rows"])
@@ -429,13 +478,7 @@ def run_strategy_core(
         )
         send_tg_message(trade_message)
     else:
-        holdings_lines = [
-            "  ".join(
-                f"{symbol}: ${market_values[symbol]:,.2f}"
-                for symbol in row
-            )
-            for row in portfolio_rows
-        ]
+        holdings_lines = _format_holdings_lines(portfolio_rows, market_values, translator=translator)
         no_trade_message = (
             f"{translator('heartbeat_header')}\n"
             f"{translator('strategy_label', name=strategy_display_name)}\n"
