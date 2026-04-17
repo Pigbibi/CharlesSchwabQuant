@@ -38,6 +38,26 @@ class RebalanceServiceTests(unittest.TestCase):
             "目标股票仓位=60.0% 实际股票仓位=60.0% 入选标的数=8 前排标的=CIEN(0.92)"
         )
 
+    def test_localize_notification_text_for_runtime_diagnostic_tail_in_zh(self):
+        localized = rebalance_service._localize_notification_text(
+            (
+                "monthly snapshot cadence | waiting inside execution window | "
+                "small_account_warning=true portfolio_equity=$0 min_recommended_equity=$1,000 "
+                "reason=integer_shares_min_position_value_may_prevent_backtest_replication | "
+                "snapshot_as_of=<none> profile=soxl_soxx_trend_income"
+            ),
+            translator=build_translator("zh"),
+        )
+
+        assert "月度快照节奏" in localized
+        assert "等待进入执行窗口" in localized
+        assert "小账户提示=是" in localized
+        assert "净值=$0" in localized
+        assert "建议最低净值=$1,000" in localized
+        assert "整数股和最小仓位限制可能导致实盘无法完全复现回测" in localized
+        assert "快照日期=无" in localized
+        assert "SOXL/SOXX 半导体趋势收益" in localized
+
     def test_translator_localizes_semiconductor_trend_status_for_zh(self):
         translate = build_translator("zh")
         self.assertEqual(translate("market_status_risk_on", asset="SOXL"), "🚀 风险开启（SOXL）")
@@ -633,6 +653,96 @@ class RebalanceServiceTests(unittest.TestCase):
         self.assertTrue(sent_messages)
         self.assertIn("模拟下单: sell BOXX: 2shares", sent_messages[0])
         self.assertIn("模拟下单: limit buy QQQM ($264.00): 1shares", sent_messages[0])
+        self.assertNotIn("buy BOXX", sent_messages[0])
+
+    def test_run_strategy_core_does_not_sweep_back_into_cash_symbol_after_selling_it(self):
+        sent_messages = []
+        snapshot = SimpleNamespace(
+            positions=(
+                SimpleNamespace(symbol="QQQM", quantity=0, market_value=0.0),
+                SimpleNamespace(symbol="BOXX", quantity=10, market_value=1000.0),
+            ),
+            total_equity=1000.0,
+            buying_power=0.0,
+            metadata={"account_hash": "demo"},
+        )
+        quote_snapshots = {
+            "QQQM": SimpleNamespace(last_price=100.0, ask_price=100.0),
+            "BOXX": SimpleNamespace(last_price=100.0, ask_price=100.0),
+        }
+        plan = {
+            "strategy_profile": "tqqq_growth_income",
+            "account_hash": "demo",
+            "allocation": {
+                "target_mode": "value",
+                "strategy_symbols": ("QQQM", "BOXX"),
+                "risk_symbols": ("QQQM",),
+                "income_symbols": (),
+                "safe_haven_symbols": ("BOXX",),
+                "targets": {"QQQM": 550.0, "BOXX": 0.0},
+            },
+            "portfolio": {
+                "strategy_symbols": ("QQQM", "BOXX"),
+                "portfolio_rows": (("QQQM", "BOXX"),),
+                "market_values": {"QQQM": 0.0, "BOXX": 1000.0},
+                "quantities": {"QQQM": 0, "BOXX": 10},
+                "total_equity": 1000.0,
+                "liquid_cash": 0.0,
+                "cash_sweep_symbol": "BOXX",
+            },
+            "execution": {
+                "trade_threshold_value": 1.0,
+                "reserved_cash": 0.0,
+                "signal_display": "Hold",
+                "dashboard_text": "",
+                "separator": "-----",
+                "benchmark_symbol": "QQQ",
+                "benchmark_price": 0.0,
+                "long_trend_value": 0.0,
+                "exit_line": 0.0,
+            },
+        }
+        translations = {
+            "trade_header": "trade",
+            "heartbeat_header": "heartbeat",
+            "strategy_label": "strategy={name}",
+            "signal_label": "signal",
+            "equity": "equity",
+            "buying_power": "buying_power",
+            "market_sell_cmd": "sell",
+            "limit_buy_cmd": "limit buy",
+            "market_buy_cmd": "buy",
+            "shares": "shares",
+            "no_trades": "no trades",
+            "dry_run_banner": "模拟运行",
+            "dry_run_trade_log": "模拟下单: {command} {symbol}: {quantity}{shares}",
+            "dry_run_trade_log_with_price": "模拟下单: {command} {symbol} (${price}): {quantity}{shares}",
+        }
+
+        def fail_submit(*_args, **_kwargs):
+            raise AssertionError("submit_equity_order should not be called in dry-run mode")
+
+        run_strategy_core(
+            object(),
+            None,
+            fetch_reference_history=lambda client: [{"close": 1.0, "high": 1.0, "low": 1.0}],
+            fetch_managed_snapshot=lambda client: snapshot,
+            fetch_managed_quotes=lambda client: quote_snapshots,
+            resolve_rebalance_plan=lambda *, qqq_history, snapshot: plan,
+            submit_equity_order=fail_submit,
+            send_tg_message=sent_messages.append,
+            translator=lambda key, **kwargs: translations.get(key, key).format(**kwargs)
+            if kwargs
+            else translations.get(key, key),
+            strategy_display_name="TQQQ Growth Income",
+            limit_buy_premium=0.5,
+            sell_settle_delay_sec=0,
+            dry_run_only=True,
+        )
+
+        self.assertTrue(sent_messages)
+        self.assertIn("模拟下单: sell BOXX: 5shares", sent_messages[0])
+        self.assertIn("模拟下单: limit buy QQQM ($50.00): 5shares", sent_messages[0])
         self.assertNotIn("buy BOXX", sent_messages[0])
 
     def test_run_strategy_core_retries_refresh_until_sold_cash_is_available(self):

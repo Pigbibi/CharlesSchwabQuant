@@ -20,6 +20,41 @@ _ZH_REASON_REPLACEMENTS = (
     ("feature_snapshot_config_name_mismatch", "快照配置名不匹配"),
     ("feature_snapshot_config_path_mismatch", "快照配置路径不匹配"),
     ("feature_snapshot_contract_version_mismatch", "快照契约版本不匹配"),
+    ("soxl_soxx_trend_income", "SOXL/SOXX 半导体趋势收益"),
+    ("tqqq_growth_income", "TQQQ 增长收益"),
+    ("global_etf_rotation", "全球 ETF 轮动"),
+    ("russell_1000_multi_factor_defensive", "罗素1000多因子"),
+    ("tech_communication_pullback_enhancement", "科技通信回调增强"),
+    ("qqq_tech_enhancement", "科技通信回调增强"),
+    ("mega_cap_leader_rotation_aggressive", "Mega Cap 激进龙头轮动"),
+    ("mega_cap_leader_rotation_dynamic_top20", "Mega Cap 动态 Top20 龙头轮动"),
+    ("mega_cap_leader_rotation_top50_balanced", "Mega Cap Top50 平衡龙头轮动"),
+    ("dynamic_mega_leveraged_pullback", "Mega Cap 2x 回调策略"),
+    ("outside_monthly_execution_window", "当前不在月度执行窗口"),
+    ("no_execution_window_after_snapshot", "快照后没有可用执行窗口"),
+    ("no-op", "不执行"),
+    ("monthly snapshot cadence", "月度快照节奏"),
+    ("waiting inside execution window", "等待进入执行窗口"),
+    ("small_account_warning=true", "小账户提示=是"),
+    ("portfolio_equity=", "净值="),
+    ("min_recommended_equity=", "建议最低净值="),
+    (
+        "integer_shares_min_position_value_may_prevent_backtest_replication",
+        "整数股和最小仓位限制可能导致实盘无法完全复现回测",
+    ),
+    (
+        "integer-share minimum position sizing may prevent backtest replication",
+        "整数股和最小仓位限制可能导致实盘无法完全复现回测",
+    ),
+    ("small account warning: portfolio equity", "小账户提示：净值"),
+    ("small account warning", "小账户提示"),
+    ("is below the recommended", "低于建议"),
+    ("is below recommended", "低于建议"),
+    ("snapshot_as_of=", "快照日期="),
+    ("snapshot=", "快照日期="),
+    ("allowed=", "允许日期="),
+    ("<unknown>", "未知"),
+    ("<none>", "无"),
     ("RISK-ON", "风险开启"),
     ("DE-LEVER", "降杠杆"),
     ("regime=hard_defense", "市场阶段=强防御"),
@@ -270,6 +305,7 @@ def run_strategy_core(
         + allocation.get("safe_haven_symbols", ())
     )
     sell_executed = False
+    cash_sweep_sold_this_cycle = False
     for symbol in sell_order_symbols:
         current = market_values[symbol]
         target = target_values[symbol]
@@ -281,6 +317,8 @@ def run_strategy_core(
                     continue
             if execute_fire_forget(symbol, "SELL", quantity):
                 sell_executed = True
+                if symbol == cash_sweep_symbol:
+                    cash_sweep_sold_this_cycle = True
                 if dry_run_only:
                     dry_run_sale_events.append(
                         (symbol, quantity, quantity * quotes[symbol]["lastPrice"])
@@ -348,7 +386,10 @@ def run_strategy_core(
                     execute_fire_forget(symbol, "BUY_LIMIT", quantity, limit_price)
                     estimated_buying_power -= quantity * limit_price
 
-    if estimated_buying_power > quotes[cash_sweep_symbol]["lastPrice"] * 2:
+    if (
+        not cash_sweep_sold_this_cycle
+        and estimated_buying_power > quotes[cash_sweep_symbol]["lastPrice"] * 2
+    ):
         quantity = int(estimated_buying_power // quotes[cash_sweep_symbol]["lastPrice"])
         if quantity > 0:
             execute_fire_forget(cash_sweep_symbol, "BUY_MARKET", quantity)
