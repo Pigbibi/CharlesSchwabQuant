@@ -213,6 +213,68 @@ def _format_holdings_lines(portfolio_rows, market_values, *, translator) -> list
     return lines
 
 
+def _first_detail_line(text: str) -> str:
+    parts = _split_labeled_text(text)
+    return parts[0] if parts else ""
+
+
+def _build_compact_trade_message(
+    *,
+    translator,
+    strategy_display_name,
+    dry_run_only,
+    extra_notification_block,
+    status_display,
+    signal_display,
+    trade_logs,
+) -> str:
+    lines = [
+        translator("trade_header"),
+        translator("strategy_label", name=strategy_display_name),
+    ]
+    if dry_run_only:
+        lines.append(translator("dry_run_banner"))
+    if extra_notification_block:
+        lines.extend(line for line in extra_notification_block.splitlines() if line.strip())
+    status_summary = _first_detail_line(status_display)
+    if status_summary:
+        lines.append(f"📊 {status_summary}")
+    signal_summary = _first_detail_line(signal_display)
+    if signal_summary:
+        lines.append(f"📊 {translator('signal_label')}: {signal_summary}")
+    lines.extend(str(log).strip() for log in trade_logs if str(log).strip())
+    return "\n".join(lines)
+
+
+def _build_compact_heartbeat_message(
+    *,
+    translator,
+    strategy_display_name,
+    dry_run_only,
+    extra_notification_block,
+    total_equity,
+    status_display,
+    signal_display,
+) -> str:
+    lines = [
+        translator("heartbeat_header"),
+        translator("strategy_label", name=strategy_display_name),
+        f"💰 {translator('equity')}: ${total_equity:,.2f}",
+    ]
+    if dry_run_only:
+        lines.append(translator("dry_run_banner"))
+    if extra_notification_block:
+        lines.extend(line for line in extra_notification_block.splitlines() if line.strip())
+    status_summary = _first_detail_line(status_display)
+    if status_summary:
+        lines.append(f"📊 {status_summary}")
+    signal_summary = _first_detail_line(signal_display)
+    if signal_summary:
+        lines.append(f"🎯 {translator('signal_label')}: {signal_summary}")
+    lines.append(translator("no_trades"))
+    return "\n".join(lines)
+
+
 def run_strategy_core(
     client,
     now_ny,
@@ -369,6 +431,7 @@ def run_strategy_core(
     threshold = float(execution["trade_threshold_value"])
     cash_sweep_symbol = str(portfolio["cash_sweep_symbol"])
     dry_run_sale_events = []
+    post_sell_buying_power_released = None
     buy_order_symbols = tuple(
         allocation.get("income_symbols", ()) + allocation.get("risk_symbols", ())
     )
@@ -458,6 +521,7 @@ def run_strategy_core(
                 if refreshed_buying_power > previous_buying_power:
                     best_refreshed_state = refreshed_state
                     break
+            post_sell_buying_power_released = best_buying_power > previous_buying_power
             plan, portfolio, execution, allocation = best_refreshed_state
             strategy_symbols = tuple(allocation["strategy_symbols"])
             quotes = load_quotes(strategy_symbols)
@@ -468,6 +532,7 @@ def run_strategy_core(
     liquid_cash = float(portfolio["liquid_cash"])
     reserved_cash = float(execution["reserved_cash"])
     estimated_buying_power = max(0, liquid_cash - reserved_cash)
+    buy_executed = False
     for symbol in buy_order_symbols:
         target_val = target_values[symbol]
         if market_values[symbol] < (target_val - threshold):
@@ -477,8 +542,9 @@ def run_strategy_core(
                 quantity = int(amount_to_spend // ask)
                 if quantity > 0:
                     limit_price = round(ask * limit_buy_premium, 2)
-                    execute_fire_forget(symbol, "BUY_LIMIT", quantity, limit_price)
-                    estimated_buying_power -= quantity * limit_price
+                    if execute_fire_forget(symbol, "BUY_LIMIT", quantity, limit_price):
+                        buy_executed = True
+                        estimated_buying_power -= quantity * limit_price
 
     if (
         not cash_sweep_sold_this_cycle
@@ -486,7 +552,16 @@ def run_strategy_core(
     ):
         quantity = int(estimated_buying_power // quotes[cash_sweep_symbol]["lastPrice"])
         if quantity > 0:
-            execute_fire_forget(cash_sweep_symbol, "BUY_MARKET", quantity)
+            if execute_fire_forget(cash_sweep_symbol, "BUY_MARKET", quantity):
+                buy_executed = True
+
+    if (
+        sell_executed
+        and not dry_run_only
+        and post_sell_buying_power_released is False
+        and not buy_executed
+    ):
+        trade_logs.append(translator("post_sell_buying_power_unreleased"))
 
     signal_display = _localize_notification_text(execution["signal_display"], translator=translator)
     status_display = _localize_notification_text(execution.get("status_display"), translator=translator)
@@ -510,7 +585,7 @@ def run_strategy_core(
 
     if trade_logs:
         dry_run_line = f"{translator('dry_run_banner')}\n" if dry_run_only else ""
-        trade_message = (
+        detailed_trade_message = (
             f"{translator('trade_header')}\n"
             f"{translator('strategy_label', name=strategy_display_name)}\n"
             f"{dry_run_line}"
@@ -520,10 +595,20 @@ def run_strategy_core(
             f"{dashboard_block}"
             + "\n".join(trade_logs)
         )
-        send_tg_message(trade_message)
+        compact_trade_message = _build_compact_trade_message(
+            translator=translator,
+            strategy_display_name=strategy_display_name,
+            dry_run_only=dry_run_only,
+            extra_notification_block=extra_notification_block,
+            status_display=status_display,
+            signal_display=signal_display,
+            trade_logs=trade_logs,
+        )
+        print(detailed_trade_message, flush=True)
+        send_tg_message(compact_trade_message)
     else:
         holdings_lines = _format_holdings_lines(portfolio_rows, market_values, translator=translator)
-        no_trade_message = (
+        detailed_no_trade_message = (
             f"{translator('heartbeat_header')}\n"
             f"{translator('strategy_label', name=strategy_display_name)}\n"
             f"{extra_notification_block}"
@@ -537,5 +622,14 @@ def run_strategy_core(
             f"{separator}\n"
             f"{translator('no_trades')}"
         )
-        print(no_trade_message, flush=True)
-        send_tg_message(no_trade_message)
+        compact_no_trade_message = _build_compact_heartbeat_message(
+            translator=translator,
+            strategy_display_name=strategy_display_name,
+            dry_run_only=dry_run_only,
+            extra_notification_block=extra_notification_block,
+            total_equity=total_equity,
+            status_display=status_display,
+            signal_display=signal_display,
+        )
+        print(detailed_no_trade_message, flush=True)
+        send_tg_message(compact_no_trade_message)
