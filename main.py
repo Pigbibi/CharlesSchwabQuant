@@ -9,6 +9,7 @@ import pandas as pd
 from application.rebalance_service import run_strategy_core as run_rebalance_cycle
 from decision_mapper import map_strategy_decision_to_plan
 from entrypoints.cloud_run import is_market_open_today
+from notifications.events import NotificationPublisher, RenderedNotification
 from notifications.telegram import (
     build_sender,
     build_signal_text,
@@ -163,6 +164,19 @@ validate_config()
 
 
 send_tg_message = build_sender(TG_TOKEN, TG_CHAT_ID)
+
+
+def publish_notification(*, detailed_text, compact_text):
+    publisher = NotificationPublisher(
+        log_message=lambda message: print(message, flush=True),
+        send_message=send_tg_message,
+    )
+    publisher.publish(
+        RenderedNotification(
+            detailed_text=detailed_text,
+            compact_text=compact_text,
+        )
+    )
 
 
 def log_runtime_event(log_context, event, **fields):
@@ -466,7 +480,8 @@ def handle_schwab():
             error_type=type(exc).__name__,
             error_message=str(exc),
         )
-        send_tg_message(f"{t('error_header')}\n{traceback.format_exc()}")
+        error_message = f"{t('error_header')}\n{traceback.format_exc()}"
+        publish_notification(detailed_text=error_message, compact_text=error_message)
         return "Error", 500
     finally:
         try:
