@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import re
 
+from notifications.events import NotificationPublisher, RenderedNotification
 from quant_platform_kit.common.models import OrderIntent
 
 _ZH_REASON_REPLACEMENTS = (
@@ -308,6 +309,10 @@ def run_strategy_core(
     extra_notification_lines=(),
 ):
     del now_ny
+    notification_publisher = NotificationPublisher(
+        log_message=lambda message: print(message, flush=True),
+        send_message=send_tg_message,
+    )
 
     reference_history = fetch_reference_history(client)
 
@@ -430,12 +435,22 @@ def run_strategy_core(
             else:
                 message = f"❌ {translator('market_buy')} {symbol}: {quantity}{translator('shares')} {translator('failed')} - {info}"
             trade_logs.append(message)
-            send_tg_message(message)
+            notification_publisher.publish(
+                RenderedNotification(
+                    detailed_text=message,
+                    compact_text=message,
+                )
+            )
             return False
         except Exception as exc:
             message = f"🚨 {symbol} {translator('buy_label')} {quantity}{translator('shares')} {translator('exception')}: {exc}"
             trade_logs.append(message)
-            send_tg_message(message)
+            notification_publisher.publish(
+                RenderedNotification(
+                    detailed_text=message,
+                    compact_text=message,
+                )
+            )
             return False
 
     market_values = dict(portfolio["market_values"])
@@ -618,8 +633,12 @@ def run_strategy_core(
             signal_display=signal_display,
             trade_logs=trade_logs,
         )
-        print(detailed_trade_message, flush=True)
-        send_tg_message(compact_trade_message)
+        notification_publisher.publish(
+            RenderedNotification(
+                detailed_text=detailed_trade_message,
+                compact_text=compact_trade_message,
+            )
+        )
     else:
         holdings_lines = _format_holdings_lines(portfolio_rows, market_values, translator=translator)
         if dashboard_block:
@@ -653,5 +672,9 @@ def run_strategy_core(
             status_display=status_display,
             signal_display=signal_display,
         )
-        print(detailed_no_trade_message, flush=True)
-        send_tg_message(compact_no_trade_message)
+        notification_publisher.publish(
+            RenderedNotification(
+                detailed_text=detailed_no_trade_message,
+                compact_text=compact_no_trade_message,
+            )
+        )
