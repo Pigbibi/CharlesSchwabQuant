@@ -57,6 +57,22 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip install ruff
+
+      - name: Smoke import pinned shared packages
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from quant_platform_kit.common.port_adapters import CallableNotificationPort, CallablePortfolioPort
+          from us_equity_strategies import resolve_canonical_profile
+
+          assert CallableNotificationPort
+          assert CallablePortfolioPort
+          assert resolve_canonical_profile("mega_cap_leader_rotation_top50_balanced") == "mega_cap_leader_rotation_top50_balanced"
+          PY
+
+      - name: Install editable shared repositories
+        run: |
+          set -euo pipefail
           python -m pip install --no-deps -e external/QuantPlatformKit -e external/UsEquityStrategies
 
       - name: Run ruff
