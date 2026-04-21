@@ -13,10 +13,103 @@ if str(QPK_SRC) not in sys.path:
 
 from application import rebalance_service
 from application.rebalance_service import run_strategy_core
+from application.runtime_dependencies import SchwabRebalanceConfig, SchwabRebalanceRuntime
 from notifications.telegram import build_translator
+from quant_platform_kit.common.models import ExecutionReport, PortfolioSnapshot, Position, QuoteSnapshot
+from quant_platform_kit.common.port_adapters import CallableExecutionPort, CallableMarketDataPort, CallableNotificationPort, CallablePortfolioPort
 
 
 class RebalanceServiceTests(unittest.TestCase):
+    def test_run_strategy_core_supports_execution_port_runtime_path(self):
+        sent_messages = []
+        observed_orders = []
+        snapshot = PortfolioSnapshot(
+            as_of="2026-04-21",
+            total_equity=50000.0,
+            buying_power=10000.0,
+            positions=(
+                Position(symbol="TQQQ", quantity=0, market_value=0.0),
+                Position(symbol="BOXX", quantity=10, market_value=5000.0),
+                Position(symbol="SPYI", quantity=0, market_value=0.0),
+                Position(symbol="QQQI", quantity=0, market_value=0.0),
+            ),
+            metadata={"account_hash": "demo"},
+        )
+        quote_snapshots = {
+            "TQQQ": QuoteSnapshot(symbol="TQQQ", as_of="2026-04-21", last_price=50.0, ask_price=50.1),
+            "BOXX": QuoteSnapshot(symbol="BOXX", as_of="2026-04-21", last_price=100.0, ask_price=100.0),
+            "SPYI": QuoteSnapshot(symbol="SPYI", as_of="2026-04-21", last_price=50.0, ask_price=50.0),
+            "QQQI": QuoteSnapshot(symbol="QQQI", as_of="2026-04-21", last_price=50.0, ask_price=50.0),
+        }
+        plan = {
+            "strategy_profile": "tqqq_growth_income",
+            "account_hash": "demo",
+            "allocation": {
+                "target_mode": "value",
+                "strategy_symbols": ("TQQQ", "BOXX", "SPYI", "QQQI"),
+                "risk_symbols": ("TQQQ",),
+                "income_symbols": ("QQQI", "SPYI"),
+                "safe_haven_symbols": ("BOXX",),
+                "targets": {"TQQQ": 20000.0, "BOXX": 15000.0, "SPYI": 5000.0, "QQQI": 10000.0},
+            },
+            "portfolio": {
+                "strategy_symbols": ("TQQQ", "BOXX", "SPYI", "QQQI"),
+                "portfolio_rows": (("TQQQ", "BOXX"), ("QQQI", "SPYI")),
+                "market_values": {"TQQQ": 0.0, "BOXX": 5000.0, "SPYI": 0.0, "QQQI": 0.0},
+                "quantities": {"TQQQ": 0, "BOXX": 10, "SPYI": 0, "QQQI": 0},
+                "total_equity": 50000.0,
+                "liquid_cash": 10000.0,
+                "cash_sweep_symbol": "BOXX",
+            },
+            "execution": {
+                "trade_threshold_value": 500.0,
+                "reserved_cash": 2500.0,
+                "signal_display": "💎 Trend Hold",
+                "dashboard_text": "dashboard",
+                "separator": "━━━━━━━━━━━━━━━━━━",
+                "benchmark_symbol": "QQQ",
+                "benchmark_price": 400.0,
+                "long_trend_value": 380.0,
+                "exit_line": 360.0,
+            },
+        }
+
+        run_strategy_core(
+            object(),
+            None,
+            runtime=SchwabRebalanceRuntime(
+                fetch_reference_history=lambda: [{"close": 1.0, "high": 1.0, "low": 1.0}],
+                portfolio_port=CallablePortfolioPort(lambda: snapshot),
+                market_data_port=CallableMarketDataPort(quote_loader=lambda symbol: quote_snapshots[symbol]),
+                resolve_rebalance_plan=lambda *, qqq_history, snapshot: plan,
+                notifications=CallableNotificationPort(sent_messages.append),
+                execution_port_factory=lambda _account_hash: CallableExecutionPort(
+                    lambda order_intent: (
+                        observed_orders.append(order_intent),
+                        ExecutionReport(
+                            symbol=order_intent.symbol,
+                            side=order_intent.side,
+                            quantity=order_intent.quantity,
+                            status="accepted",
+                            broker_order_id="schwab-order-1",
+                        ),
+                    )[-1]
+                ),
+            ),
+            config=SchwabRebalanceConfig(
+                translator=build_translator("en"),
+                strategy_display_name="TQQQ Growth Income",
+                limit_buy_premium=1.005,
+                sell_settle_delay_sec=0,
+            ),
+        )
+
+        self.assertEqual(len(observed_orders), 1)
+        self.assertEqual(observed_orders[0].symbol, "QQQI")
+        self.assertEqual(observed_orders[0].order_type, "limit")
+        self.assertTrue(sent_messages)
+        self.assertIn("trade", sent_messages[0].lower())
+
     def test_localize_notification_text_for_snapshot_guard_in_zh(self):
         localized = rebalance_service._localize_notification_text(
             "fail_closed | reason=feature_snapshot_path_missing",

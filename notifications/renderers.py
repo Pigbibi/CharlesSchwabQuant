@@ -1,21 +1,11 @@
-"""Application orchestration for CharlesSchwabPlatform."""
+"""Notification rendering helpers for CharlesSchwabPlatform."""
 
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
 
-from application.execution_service import execute_rebalance_cycle
-from application.runtime_dependencies import SchwabRebalanceConfig, SchwabRebalanceRuntime
-from notifications.events import NotificationPublisher, RenderedNotification
-from notifications import renderers as notification_renderers
-from quant_platform_kit.common.models import QuoteSnapshot
-from quant_platform_kit.common.port_adapters import (
-    CallableExecutionPort,
-    CallableMarketDataPort,
-    CallableNotificationPort,
-    CallablePortfolioPort,
-)
+from notifications.events import RenderedNotification
+
 
 _ZH_REASON_REPLACEMENTS = (
     ("feature snapshot guard blocked execution", "特征快照校验阻止执行"),
@@ -91,22 +81,6 @@ _ZH_REASON_REPLACEMENTS = (
     ("reason=", "原因="),
 )
 _DETAIL_FIELD_SPLIT_RE = re.compile(r"\s+(?=[^\s=:：]+[=:：])")
-
-
-def _plan_portfolio(plan):
-    return dict(plan.get("portfolio") or {})
-
-
-def _plan_execution(plan):
-    return dict(plan.get("execution") or {})
-
-
-def _plan_allocation(plan):
-    return dict(plan.get("allocation") or {})
-
-
-def _noop_sleep(_seconds):
-    return None
 
 
 def _has_benchmark_context(execution):
@@ -228,6 +202,15 @@ def _first_detail_line(text: str) -> str:
     return parts[0] if parts else ""
 
 
+def _render_extra_notification_block(extra_notification_lines) -> str:
+    block = "\n".join(
+        str(line).strip() for line in extra_notification_lines if str(line).strip()
+    )
+    if not block:
+        return ""
+    return f"{block}\n"
+
+
 def _build_compact_trade_message(
     *,
     translator,
@@ -297,167 +280,102 @@ def _build_compact_heartbeat_message(
     return "\n".join(lines)
 
 
-_localize_notification_text = notification_renderers._localize_notification_text
-_format_dashboard_text = notification_renderers._format_dashboard_text
-
-
-def _legacy_quote_snapshot(symbol, quote_snapshots) -> QuoteSnapshot:
-    raw_snapshot = quote_snapshots[str(symbol).strip().upper()]
-    return QuoteSnapshot(
-        symbol=str(symbol).strip().upper(),
-        as_of=datetime.now(timezone.utc),
-        last_price=float(raw_snapshot.last_price),
-        ask_price=(
-            float(raw_snapshot.ask_price)
-            if getattr(raw_snapshot, "ask_price", None) is not None
-            else None
-        ),
-    )
-
-
-def run_strategy_core(
-    client=None,
-    now_ny=None,
+def render_trade_notification(
     *,
-    runtime: SchwabRebalanceRuntime | None = None,
-    config: SchwabRebalanceConfig | None = None,
-    fetch_reference_history=None,
-    fetch_managed_snapshot=None,
-    fetch_managed_quotes=None,
-    resolve_rebalance_plan=None,
-    submit_equity_order=None,
-    send_tg_message=None,
-    translator=None,
-    strategy_display_name=None,
-    limit_buy_premium=None,
-    sell_settle_delay_sec=None,
-    dry_run_only=False,
-    post_sell_refresh_attempts=1,
-    post_sell_refresh_interval_sec=0.0,
-    sleeper=_noop_sleep,
-    extra_notification_lines=(),
-):
-    del now_ny
-    if runtime is None:
-        if not all(
-            (
-                client is not None,
-                fetch_reference_history,
-                fetch_managed_snapshot,
-                fetch_managed_quotes,
-                resolve_rebalance_plan,
-                submit_equity_order,
-                send_tg_message,
-            )
-        ):
-            raise ValueError("Legacy Schwab rebalance call requires client plus fetch_reference_history/fetch_managed_snapshot/fetch_managed_quotes/resolve_rebalance_plan/submit_equity_order/send_tg_message")
-        runtime = SchwabRebalanceRuntime(
-            fetch_reference_history=lambda: fetch_reference_history(client),
-            portfolio_port=CallablePortfolioPort(lambda: fetch_managed_snapshot(client)),
-            market_data_port=CallableMarketDataPort(
-                quote_loader=lambda symbol: _legacy_quote_snapshot(
-                    symbol,
-                    fetch_managed_quotes(client),
-                )
-            ),
-            resolve_rebalance_plan=resolve_rebalance_plan,
-            notifications=CallableNotificationPort(send_tg_message),
-            execution_port_factory=lambda account_hash: CallableExecutionPort(
-                lambda order_intent: submit_equity_order(client, account_hash, order_intent)
-            ),
-            submit_equity_order=lambda account_hash, order_intent: submit_equity_order(client, account_hash, order_intent),
-        )
-    if config is None:
-        config = SchwabRebalanceConfig(
-            translator=translator,
-            strategy_display_name=strategy_display_name,
-            limit_buy_premium=limit_buy_premium,
-            sell_settle_delay_sec=sell_settle_delay_sec,
-            dry_run_only=dry_run_only,
-            post_sell_refresh_attempts=post_sell_refresh_attempts,
-            post_sell_refresh_interval_sec=post_sell_refresh_interval_sec,
-            sleeper=sleeper,
-            extra_notification_lines=tuple(extra_notification_lines),
-        )
-    sleeper_fn = config.sleeper or _noop_sleep
-    notification_publisher = NotificationPublisher(
-        log_message=lambda message: print(message, flush=True),
-        send_message=runtime.notifications.send_text,
+    translator,
+    strategy_display_name,
+    dry_run_only,
+    extra_notification_lines,
+    execution,
+    trade_logs,
+) -> RenderedNotification:
+    signal_display = _localize_notification_text(execution["signal_display"], translator=translator)
+    status_display = _localize_notification_text(execution.get("status_display"), translator=translator)
+    extra_notification_block = _render_extra_notification_block(extra_notification_lines)
+    dashboard_text = _format_dashboard_text(str(execution["dashboard_text"]), translator=translator)
+    separator = str(execution["separator"])
+    status_line = "\n".join(_split_labeled_text(f"📊 {status_display}")) + "\n" if status_display else ""
+    dashboard_block = f"{dashboard_text}\n{separator}\n" if dashboard_text else ""
+    trade_signal_lines = _format_label_value_lines(f"📊 {translator('signal_label')}", signal_display)
+    trade_signal_block = "\n".join(trade_signal_lines)
+    dry_run_line = f"{translator('dry_run_banner')}\n" if dry_run_only else ""
+    detailed_text = (
+        f"{translator('trade_header')}\n"
+        f"{translator('strategy_label', name=strategy_display_name)}\n"
+        f"{dry_run_line}"
+        f"{extra_notification_block}"
+        f"{status_line}"
+        f"{trade_signal_block}\n\n"
+        f"{dashboard_block}"
+        + "\n".join(trade_logs)
     )
-
-    reference_history = runtime.fetch_reference_history()
-
-    def load_plan(current_snapshot):
-        current_plan = runtime.resolve_rebalance_plan(
-            qqq_history=reference_history,
-            snapshot=current_snapshot,
-        )
-        current_portfolio = _plan_portfolio(current_plan)
-        current_execution = _plan_execution(current_plan)
-        current_allocation = _plan_allocation(current_plan)
-        if current_allocation.get("target_mode") != "value":
-            raise ValueError("CharlesSchwabPlatform requires allocation.target_mode=value")
-        return current_plan, current_portfolio, current_execution, current_allocation
-
-    snapshot = runtime.portfolio_port.get_portfolio_snapshot()
-    plan, portfolio, execution, allocation = load_plan(snapshot)
-    execution_port = (
-        runtime.execution_port_factory(plan["account_hash"])
-        if runtime.execution_port_factory is not None
-        else None
+    compact_text = _build_compact_trade_message(
+        translator=translator,
+        strategy_display_name=strategy_display_name,
+        dry_run_only=dry_run_only,
+        extra_notification_block=extra_notification_block,
+        dashboard_text=dashboard_text,
+        separator=separator,
+        status_display=status_display,
+        signal_display=signal_display,
+        trade_logs=trade_logs,
     )
-    execution_result = execute_rebalance_cycle(
-        client=client,
-        plan=plan,
-        portfolio=portfolio,
-        execution=execution,
-        allocation=allocation,
-        fetch_managed_snapshot=lambda _client: runtime.portfolio_port.get_portfolio_snapshot(),
-        market_data_port=runtime.market_data_port,
-        load_plan=load_plan,
-        execution_port=execution_port,
-        submit_equity_order=(
-            (lambda _client, account_hash, order_intent: runtime.submit_equity_order(account_hash, order_intent))
-            if runtime.submit_equity_order is not None
-            else None
-        ),
-        translator=config.translator,
-        limit_buy_premium=config.limit_buy_premium,
-        sell_settle_delay_sec=config.sell_settle_delay_sec,
-        dry_run_only=config.dry_run_only,
-        post_sell_refresh_attempts=config.post_sell_refresh_attempts,
-        post_sell_refresh_interval_sec=config.post_sell_refresh_interval_sec,
-        sleeper=sleeper_fn,
-        publish_order_issue=lambda message: notification_publisher.publish(
-            RenderedNotification(
-                detailed_text=message,
-                compact_text=message,
-            )
-        ),
-    )
-    portfolio = execution_result.portfolio
-    execution = execution_result.execution
-    trade_logs = list(execution_result.trade_logs)
+    return RenderedNotification(detailed_text=detailed_text, compact_text=compact_text)
 
-    if trade_logs:
-        notification_publisher.publish(
-            notification_renderers.render_trade_notification(
-                translator=config.translator,
-                strategy_display_name=config.strategy_display_name,
-                dry_run_only=config.dry_run_only,
-                extra_notification_lines=config.extra_notification_lines,
-                execution=execution,
-                trade_logs=trade_logs,
-            )
-        )
+
+def render_heartbeat_notification(
+    *,
+    translator,
+    strategy_display_name,
+    dry_run_only,
+    extra_notification_lines,
+    execution,
+    portfolio,
+) -> RenderedNotification:
+    signal_display = _localize_notification_text(execution["signal_display"], translator=translator)
+    status_display = _localize_notification_text(execution.get("status_display"), translator=translator)
+    extra_notification_block = _render_extra_notification_block(extra_notification_lines)
+    dashboard_text = _format_dashboard_text(str(execution["dashboard_text"]), translator=translator)
+    separator = str(execution["separator"])
+    total_equity = float(portfolio["total_equity"])
+    portfolio_rows = tuple(portfolio["portfolio_rows"])
+    market_values = dict(portfolio["market_values"])
+    status_line = "\n".join(_split_labeled_text(f"📊 {status_display}")) + "\n" if status_display else ""
+    dashboard_block = f"{dashboard_text}\n{separator}\n" if dashboard_text else ""
+    benchmark_lines = _format_benchmark_lines(execution, translator=translator)
+    benchmark_block = "\n".join(benchmark_lines) + "\n" if benchmark_lines else ""
+    heartbeat_signal_lines = _format_label_value_lines(f"🎯 {translator('signal_label')}", signal_display)
+    heartbeat_signal_block = "\n".join(heartbeat_signal_lines)
+    if dashboard_block:
+        portfolio_block = dashboard_block
     else:
-        notification_publisher.publish(
-            notification_renderers.render_heartbeat_notification(
-                translator=config.translator,
-                strategy_display_name=config.strategy_display_name,
-                dry_run_only=config.dry_run_only,
-                extra_notification_lines=config.extra_notification_lines,
-                execution=execution,
-                portfolio=portfolio,
-            )
+        holdings_lines = _format_holdings_lines(portfolio_rows, market_values, translator=translator)
+        portfolio_block = (
+            f"💰 {translator('equity')}: ${total_equity:,.2f}\n"
+            f"{separator}\n"
+            + "\n".join(holdings_lines) + "\n"
+            f"{separator}\n"
         )
+    detailed_text = (
+        f"{translator('heartbeat_header')}\n"
+        f"{translator('strategy_label', name=strategy_display_name)}\n"
+        f"{extra_notification_block}"
+        f"{portfolio_block}"
+        f"{status_line}"
+        f"{heartbeat_signal_block}\n"
+        f"{benchmark_block}"
+        f"{separator}\n"
+        f"{translator('no_trades')}"
+    )
+    compact_text = _build_compact_heartbeat_message(
+        translator=translator,
+        strategy_display_name=strategy_display_name,
+        dry_run_only=dry_run_only,
+        extra_notification_block=extra_notification_block,
+        total_equity=total_equity,
+        dashboard_text=dashboard_text,
+        separator=separator,
+        status_display=status_display,
+        signal_display=signal_display,
+    )
+    return RenderedNotification(detailed_text=detailed_text, compact_text=compact_text)
