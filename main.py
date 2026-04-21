@@ -126,6 +126,11 @@ STRATEGY_RUNTIME = load_strategy_runtime(
 STRATEGY_RUNTIME_CONFIG = dict(STRATEGY_RUNTIME.merged_runtime_config)
 MANAGED_SYMBOLS = STRATEGY_RUNTIME.managed_symbols
 BENCHMARK_SYMBOL = STRATEGY_RUNTIME.benchmark_symbol
+SIGNAL_EFFECTIVE_AFTER_TRADING_DAYS = getattr(
+    getattr(STRATEGY_RUNTIME.runtime_adapter, "runtime_policy", None),
+    "signal_effective_after_trading_days",
+    None,
+)
 AVAILABLE_INPUTS = frozenset(STRATEGY_RUNTIME.runtime_adapter.available_inputs)
 
 
@@ -186,6 +191,7 @@ def build_composer():
         tg_chat_id=TG_CHAT_ID,
         managed_symbols=MANAGED_SYMBOLS,
         benchmark_symbol=BENCHMARK_SYMBOL,
+        signal_effective_after_trading_days=SIGNAL_EFFECTIVE_AFTER_TRADING_DAYS,
         dry_run_only=RUNTIME_SETTINGS.dry_run_only,
         limit_buy_premium=LIMIT_BUY_PREMIUM,
         sell_settle_delay_sec=SELL_SETTLE_DELAY_SEC,

@@ -29,6 +29,7 @@ class SchwabRuntimeComposer:
     tg_chat_id: str | None
     managed_symbols: tuple[str, ...]
     benchmark_symbol: str
+    signal_effective_after_trading_days: int | None
     dry_run_only: bool
     limit_buy_premium: float
     sell_settle_delay_sec: float
@@ -75,6 +76,7 @@ class SchwabRuntimeComposer:
             strategy_display_name=self.strategy_display_name,
             strategy_display_name_localized=self.strategy_display_name_localized,
             dry_run=self.dry_run_only,
+            signal_effective_after_trading_days=self.signal_effective_after_trading_days,
             report_base_dir=self.env_reader("EXECUTION_REPORT_OUTPUT_DIR", ""),
             report_gcs_prefix_uri=self.env_reader("EXECUTION_REPORT_GCS_URI", ""),
             run_id_builder=self.run_id_builder,
@@ -151,6 +153,7 @@ def build_runtime_composer(
     tg_chat_id: str | None,
     managed_symbols: tuple[str, ...],
     benchmark_symbol: str,
+    signal_effective_after_trading_days: int | None,
     dry_run_only: bool,
     limit_buy_premium: float,
     sell_settle_delay_sec: float,
@@ -183,6 +186,7 @@ def build_runtime_composer(
         tg_chat_id=tg_chat_id,
         managed_symbols=tuple(managed_symbols),
         benchmark_symbol=str(benchmark_symbol or ""),
+        signal_effective_after_trading_days=signal_effective_after_trading_days,
         dry_run_only=bool(dry_run_only),
         limit_buy_premium=float(limit_buy_premium),
         sell_settle_delay_sec=float(sell_settle_delay_sec),

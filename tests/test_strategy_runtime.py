@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -7,6 +8,7 @@ from quant_platform_kit.strategy_contracts import (
     StrategyDecision,
     StrategyManifest,
     StrategyRuntimeAdapter,
+    StrategyRuntimePolicy,
 )
 from runtime_config_support import PlatformRuntimeSettings
 
@@ -93,10 +95,18 @@ def _build_runtime_settings(profile: str, *, feature_snapshot_path: str | None =
 
 class StrategyRuntimeTests(unittest.TestCase):
     def test_runtime_exposes_managed_symbols_and_benchmark(self):
+        class _FixedDatetime:
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 4, 1, tzinfo=tz or timezone.utc)
+
         entrypoint = _FakeEntrypoint()
         runtime = strategy_runtime_module.LoadedStrategyRuntime(
             entrypoint=entrypoint,
-            runtime_adapter=StrategyRuntimeAdapter(portfolio_input_name="portfolio_snapshot"),
+            runtime_adapter=StrategyRuntimeAdapter(
+                portfolio_input_name="portfolio_snapshot",
+                runtime_policy=StrategyRuntimePolicy(signal_effective_after_trading_days=1),
+            ),
             runtime_settings=_build_runtime_settings("tqqq_growth_income"),
             merged_runtime_config={
                 "benchmark_symbol": "QQQ",
@@ -104,19 +114,29 @@ class StrategyRuntimeTests(unittest.TestCase):
             },
         )
 
-        result = runtime.evaluate(
-            benchmark_history=[{"close": 1.0, "high": 1.0, "low": 1.0}],
-            portfolio_snapshot=object(),
-            signal_text_fn=str,
-            translator=lambda key, **_kwargs: key,
-        )
+        with patch.object(strategy_runtime_module, "datetime", _FixedDatetime):
+            result = runtime.evaluate(
+                benchmark_history=[{"close": 1.0, "high": 1.0, "low": 1.0}],
+                portfolio_snapshot=object(),
+                signal_text_fn=str,
+                translator=lambda key, **_kwargs: key,
+            )
 
         self.assertEqual(runtime.managed_symbols, ("TQQQ", "QQQ", "BOXX", "SPYI", "QQQI"))
         self.assertEqual(runtime.benchmark_symbol, "QQQ")
         self.assertIn("signal_text_fn", entrypoint.ctx.runtime_config)
+        self.assertEqual(entrypoint.ctx.runtime_config["signal_effective_after_trading_days"], 1)
         self.assertEqual(result.metadata["strategy_profile"], "tqqq_growth_income")
+        self.assertEqual(result.metadata["signal_date"], "2026-04-01")
+        self.assertEqual(result.metadata["effective_date"], "2026-04-02")
+        self.assertEqual(result.metadata["execution_timing_contract"], "next_trading_day")
 
     def test_market_history_runtime_loads_loader_into_context(self):
+        class _FixedDatetime:
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 4, 1, tzinfo=tz or timezone.utc)
+
         class _GlobalEntrypoint:
             manifest = StrategyManifest(
                 profile="global_etf_rotation",
@@ -134,7 +154,10 @@ class StrategyRuntimeTests(unittest.TestCase):
         entrypoint = _GlobalEntrypoint()
         runtime = strategy_runtime_module.LoadedStrategyRuntime(
             entrypoint=entrypoint,
-            runtime_adapter=StrategyRuntimeAdapter(portfolio_input_name="portfolio_snapshot"),
+            runtime_adapter=StrategyRuntimeAdapter(
+                portfolio_input_name="portfolio_snapshot",
+                runtime_policy=StrategyRuntimePolicy(signal_effective_after_trading_days=1),
+            ),
             runtime_settings=_build_runtime_settings("global_etf_rotation"),
             merged_runtime_config={"safe_haven": "BIL", "ranking_pool": ("VOO", "VGK")},
         )
@@ -143,16 +166,21 @@ class StrategyRuntimeTests(unittest.TestCase):
             return [1.0, 2.0, 3.0]
 
         snapshot = object()
-        result = runtime.evaluate(
-            market_history=market_history_loader,
-            portfolio_snapshot=snapshot,
-            signal_text_fn=str,
-            translator=lambda key, **_kwargs: key,
-        )
+        with patch.object(strategy_runtime_module, "datetime", _FixedDatetime):
+            result = runtime.evaluate(
+                market_history=market_history_loader,
+                portfolio_snapshot=snapshot,
+                signal_text_fn=str,
+                translator=lambda key, **_kwargs: key,
+            )
 
         self.assertIs(entrypoint.ctx.market_data["market_history"], market_history_loader)
         self.assertIs(entrypoint.ctx.portfolio, snapshot)
+        self.assertEqual(entrypoint.ctx.runtime_config["signal_effective_after_trading_days"], 1)
         self.assertEqual(result.metadata["strategy_profile"], "global_etf_rotation")
+        self.assertEqual(result.metadata["signal_date"], "2026-04-01")
+        self.assertEqual(result.metadata["effective_date"], "2026-04-02")
+        self.assertEqual(result.metadata["execution_timing_contract"], "next_trading_day")
 
     def test_load_strategy_runtime_merges_overrides_on_top_of_entrypoint_defaults(self):
         entrypoint = _FakeEntrypoint()
