@@ -16,15 +16,22 @@ def map_strategy_decision_to_plan(
     *,
     snapshot,
     strategy_profile: str,
+    runtime_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    runtime_metadata = dict(runtime_metadata or {})
     normalized_decision = translate_decision_to_target_mode(
         decision,
         target_mode="value",
         total_equity=float(snapshot.total_equity),
     )
-    diagnostics = dict(decision.diagnostics)
+    diagnostics = {**runtime_metadata, **dict(decision.diagnostics)}
+    execution_annotations: dict[str, Any] = {}
+    raw_runtime_annotations = runtime_metadata.get("execution_annotations")
+    if isinstance(raw_runtime_annotations, dict):
+        execution_annotations.update(raw_runtime_annotations)
     raw_annotations = diagnostics.get("execution_annotations")
-    execution_annotations = dict(raw_annotations) if isinstance(raw_annotations, dict) else {}
+    if isinstance(raw_annotations, dict):
+        execution_annotations.update(raw_annotations)
     portfolio_inputs = build_value_target_portfolio_inputs_from_snapshot(snapshot)
     plan = build_value_target_runtime_plan(
         normalized_decision,
@@ -38,6 +45,11 @@ def map_strategy_decision_to_plan(
             "signal_display",
             "status_display",
             "dashboard_text",
+            "signal_date",
+            "effective_date",
+            "execution_timing_contract",
+            "execution_calendar_source",
+            "signal_effective_after_trading_days",
             "separator",
             "benchmark_symbol",
             "benchmark_price",
@@ -55,6 +67,11 @@ def map_strategy_decision_to_plan(
             "signal_display": "",
             "status_display": "",
             "dashboard_text": "",
+            "signal_date": "",
+            "effective_date": "",
+            "execution_timing_contract": "",
+            "execution_calendar_source": "",
+            "signal_effective_after_trading_days": None,
             "separator": "━━━━━━━━━━━━━━━━━━",
             "benchmark_symbol": "QQQ",
             "benchmark_price": 0.0,
@@ -89,6 +106,34 @@ def map_strategy_decision_to_plan(
                 execution_annotations.get("dashboard_text")
                 or diagnostics.get("dashboard")
                 or ""
+            ),
+            signal_date=str(execution_annotations.get("signal_date") or diagnostics.get("signal_date") or "") or None,
+            effective_date=str(
+                execution_annotations.get("effective_date") or diagnostics.get("effective_date") or ""
+            )
+            or None,
+            execution_timing_contract=str(
+                execution_annotations.get("execution_timing_contract")
+                or diagnostics.get("execution_timing_contract")
+                or ""
+            )
+            or None,
+            execution_calendar_source=str(
+                execution_annotations.get("execution_calendar_source")
+                or diagnostics.get("execution_calendar_source")
+                or ""
+            )
+            or None,
+            signal_effective_after_trading_days=(
+                int(signal_delay)
+                if (
+                    signal_delay := execution_annotations.get(
+                        "signal_effective_after_trading_days",
+                        diagnostics.get("signal_effective_after_trading_days"),
+                    )
+                )
+                is not None
+                else None
             ),
             separator=str(execution_annotations.get("separator") or "━━━━━━━━━━━━━━━━━━"),
             benchmark_symbol=str(execution_annotations.get("benchmark_symbol") or "QQQ"),

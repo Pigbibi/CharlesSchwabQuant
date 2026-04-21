@@ -66,6 +66,9 @@ class RebalanceServiceTests(unittest.TestCase):
                 "reserved_cash": 2500.0,
                 "signal_display": "💎 Trend Hold",
                 "dashboard_text": "dashboard",
+                "signal_date": "2026-04-21",
+                "effective_date": "2026-04-22",
+                "execution_timing_contract": "next_trading_day",
                 "separator": "━━━━━━━━━━━━━━━━━━",
                 "benchmark_symbol": "QQQ",
                 "benchmark_price": 400.0,
@@ -109,6 +112,7 @@ class RebalanceServiceTests(unittest.TestCase):
         self.assertEqual(observed_orders[0].order_type, "limit")
         self.assertTrue(sent_messages)
         self.assertIn("trade", sent_messages[0].lower())
+        self.assertIn("2026-04-21 -> 2026-04-22", sent_messages[0])
 
     def test_localize_notification_text_for_snapshot_guard_in_zh(self):
         localized = rebalance_service._localize_notification_text(
@@ -410,6 +414,9 @@ class RebalanceServiceTests(unittest.TestCase):
                 "reserved_cash": 0.0,
                 "signal_display": "Hold",
                 "dashboard_text": "strategy dashboard",
+                "signal_date": "2026-04-21",
+                "effective_date": "2026-04-22",
+                "execution_timing_contract": "next_trading_day",
                 "separator": "-----",
                 "benchmark_symbol": "QQQ",
                 "benchmark_price": 0.0,
@@ -455,6 +462,7 @@ class RebalanceServiceTests(unittest.TestCase):
             sent_messages[0],
         )
         self.assertIn("strategy dashboard", sent_messages[0])
+        self.assertIn("2026-04-21 -> 2026-04-22", sent_messages[0])
         self.assertIn("no trades", sent_messages[0])
 
     def test_run_strategy_core_refreshes_buying_power_after_sell_before_buying(self):

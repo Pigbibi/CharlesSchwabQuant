@@ -75,7 +75,8 @@ def install_stub_modules(strategy_plugin_mounts_json=None, notify_lang="en"):
         managed_symbols=("TQQQ", "BOXX", "SPYI", "QQQI"),
         benchmark_symbol="QQQ",
         runtime_adapter=types.SimpleNamespace(
-            available_inputs=frozenset({"benchmark_history", "portfolio_snapshot"})
+            available_inputs=frozenset({"benchmark_history", "portfolio_snapshot"}),
+            runtime_policy=types.SimpleNamespace(signal_effective_after_trading_days=1),
         ),
         evaluate=lambda **_kwargs: None,
     )
@@ -222,6 +223,9 @@ class RequestHandlingTests(unittest.TestCase):
             observed["report"]["summary"]["managed_symbols"],
             ["TQQQ", "BOXX", "SPYI", "QQQI"],
         )
+        self.assertEqual(observed["report"]["summary"]["execution_timing_contract"], "next_trading_day")
+        self.assertTrue(observed["report"]["summary"]["signal_date"])
+        self.assertTrue(observed["report"]["summary"]["effective_date"])
 
     def test_handle_schwab_attaches_strategy_plugin_report(self):
         with tempfile.TemporaryDirectory() as temp_dir:

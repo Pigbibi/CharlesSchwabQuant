@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from quant_platform_kit.strategy_contracts import build_execution_timing_metadata
 from runtime_logging import RuntimeLogContext
 
 
@@ -28,6 +29,7 @@ class SchwabRuntimeReportingAdapters:
     strategy_display_name: str = ""
     strategy_display_name_localized: str = ""
     dry_run: bool = False
+    signal_effective_after_trading_days: int | None = None
     report_base_dir: str | None = None
     report_gcs_prefix_uri: str | None = None
     run_id_builder: Callable[[], str] | None = None
@@ -59,6 +61,11 @@ class SchwabRuntimeReportingAdapters:
         ).with_run(self.run_id_builder())
 
     def build_report(self, log_context: RuntimeLogContext) -> dict[str, Any]:
+        started_at = self.clock()
+        timing_summary = build_execution_timing_metadata(
+            signal_date=started_at,
+            signal_effective_after_trading_days=self.signal_effective_after_trading_days,
+        )
         return self.report_builder(
             platform=log_context.platform,
             deploy_target=log_context.deploy_target,
@@ -68,12 +75,13 @@ class SchwabRuntimeReportingAdapters:
             run_id=log_context.run_id,
             run_source="cloud_run",
             dry_run=self.dry_run,
-            started_at=self.clock(),
+            started_at=started_at,
             summary={
                 "managed_symbols": list(self.managed_symbols),
                 "benchmark_symbol": self.benchmark_symbol,
                 "strategy_display_name": self.strategy_display_name,
                 "strategy_display_name_localized": self.strategy_display_name_localized,
+                **timing_summary,
             },
         )
 
@@ -115,6 +123,7 @@ def build_runtime_reporting_adapters(
     strategy_display_name: str,
     strategy_display_name_localized: str,
     dry_run: bool,
+    signal_effective_after_trading_days: int | None,
     report_base_dir: str | None,
     report_gcs_prefix_uri: str | None,
     run_id_builder: Callable[[], str],
@@ -137,6 +146,7 @@ def build_runtime_reporting_adapters(
         strategy_display_name=str(strategy_display_name or ""),
         strategy_display_name_localized=str(strategy_display_name_localized or ""),
         dry_run=bool(dry_run),
+        signal_effective_after_trading_days=signal_effective_after_trading_days,
         report_base_dir=report_base_dir,
         report_gcs_prefix_uri=report_gcs_prefix_uri,
         run_id_builder=run_id_builder,

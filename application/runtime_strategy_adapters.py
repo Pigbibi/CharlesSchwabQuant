@@ -175,6 +175,7 @@ class SchwabRuntimeStrategyAdapters:
             evaluation.decision,
             snapshot=snapshot,
             strategy_profile=self.strategy_profile,
+            runtime_metadata=getattr(evaluation, "metadata", None),
         )
 
 

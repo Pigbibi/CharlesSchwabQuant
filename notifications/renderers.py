@@ -189,6 +189,22 @@ def _format_dashboard_text(text: str, *, translator) -> str:
     return "\n".join(formatted_lines)
 
 
+def _build_timing_audit_lines(execution, *, translator) -> list[str]:
+    signal_date = str(execution.get("signal_date") or "").strip()
+    effective_date = str(execution.get("effective_date") or "").strip()
+    contract = str(execution.get("execution_timing_contract") or "").strip()
+    if not signal_date and not effective_date and not contract:
+        return []
+    label = "⏱ 执行时点" if _translator_uses_zh(translator) else "⏱ Timing"
+    if signal_date and effective_date:
+        value = f"{signal_date} -> {effective_date}"
+    else:
+        value = signal_date or effective_date or contract
+    if contract and contract not in value:
+        value = f"{value} ({contract})" if value else contract
+    return [f"{label}: {value}"]
+
+
 def _format_holdings_lines(portfolio_rows, market_values, *, translator) -> list[str]:
     lines = [translator("holdings_title")]
     for row in portfolio_rows:
@@ -221,6 +237,7 @@ def _build_compact_trade_message(
     separator,
     status_display,
     signal_display,
+    timing_lines,
     trade_logs,
 ) -> str:
     lines = [
@@ -235,6 +252,7 @@ def _build_compact_trade_message(
     if dashboard:
         lines.append(separator)
         lines.extend(line for line in dashboard.splitlines() if line.strip())
+    lines.extend(timing_lines)
     status_summary = _first_detail_line(status_display)
     if status_summary:
         lines.append(f"📊 {status_summary}")
@@ -256,6 +274,7 @@ def _build_compact_heartbeat_message(
     separator,
     status_display,
     signal_display,
+    timing_lines,
 ) -> str:
     lines = [
         translator("heartbeat_header"),
@@ -270,6 +289,7 @@ def _build_compact_heartbeat_message(
     if dashboard:
         lines.append(separator)
         lines.extend(line for line in dashboard.splitlines() if line.strip())
+    lines.extend(timing_lines)
     status_summary = _first_detail_line(status_display)
     if status_summary:
         lines.append(f"📊 {status_summary}")
@@ -293,6 +313,7 @@ def render_trade_notification(
     status_display = _localize_notification_text(execution.get("status_display"), translator=translator)
     extra_notification_block = _render_extra_notification_block(extra_notification_lines)
     dashboard_text = _format_dashboard_text(str(execution["dashboard_text"]), translator=translator)
+    timing_lines = _build_timing_audit_lines(execution, translator=translator)
     separator = str(execution["separator"])
     status_line = "\n".join(_split_labeled_text(f"📊 {status_display}")) + "\n" if status_display else ""
     dashboard_block = f"{dashboard_text}\n{separator}\n" if dashboard_text else ""
@@ -304,6 +325,7 @@ def render_trade_notification(
         f"{translator('strategy_label', name=strategy_display_name)}\n"
         f"{dry_run_line}"
         f"{extra_notification_block}"
+        f"{chr(10).join(timing_lines) + chr(10) if timing_lines else ''}"
         f"{status_line}"
         f"{trade_signal_block}\n\n"
         f"{dashboard_block}"
@@ -318,6 +340,7 @@ def render_trade_notification(
         separator=separator,
         status_display=status_display,
         signal_display=signal_display,
+        timing_lines=timing_lines,
         trade_logs=trade_logs,
     )
     return RenderedNotification(detailed_text=detailed_text, compact_text=compact_text)
@@ -336,6 +359,7 @@ def render_heartbeat_notification(
     status_display = _localize_notification_text(execution.get("status_display"), translator=translator)
     extra_notification_block = _render_extra_notification_block(extra_notification_lines)
     dashboard_text = _format_dashboard_text(str(execution["dashboard_text"]), translator=translator)
+    timing_lines = _build_timing_audit_lines(execution, translator=translator)
     separator = str(execution["separator"])
     total_equity = float(portfolio["total_equity"])
     portfolio_rows = tuple(portfolio["portfolio_rows"])
@@ -361,6 +385,7 @@ def render_heartbeat_notification(
         f"{translator('strategy_label', name=strategy_display_name)}\n"
         f"{extra_notification_block}"
         f"{portfolio_block}"
+        f"{chr(10).join(timing_lines) + chr(10) if timing_lines else ''}"
         f"{status_line}"
         f"{heartbeat_signal_block}\n"
         f"{benchmark_block}"
@@ -377,5 +402,6 @@ def render_heartbeat_notification(
         separator=separator,
         status_display=status_display,
         signal_display=signal_display,
+        timing_lines=timing_lines,
     )
     return RenderedNotification(detailed_text=detailed_text, compact_text=compact_text)

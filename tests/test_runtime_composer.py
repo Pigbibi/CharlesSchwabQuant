@@ -37,6 +37,7 @@ def test_runtime_composer_builds_runtime_and_config_from_local_builders():
         tg_chat_id="chat-id",
         managed_symbols=("TQQQ", "BOXX", "SPYI", "QQQI"),
         benchmark_symbol="QQQ",
+        signal_effective_after_trading_days=1,
         dry_run_only=True,
         limit_buy_premium=1.005,
         sell_settle_delay_sec=3.0,
@@ -86,6 +87,7 @@ def test_runtime_composer_builds_runtime_and_config_from_local_builders():
     assert observed["sent_message"] == ("tg-token", "chat-id", "hello")
     assert observed["notification_builder"]["send_message"]
     assert observed["reporting_builder"]["managed_symbols"] == ("TQQQ", "BOXX", "SPYI", "QQQI")
+    assert observed["reporting_builder"]["signal_effective_after_trading_days"] == 1
     assert runtime.fetch_reference_history() == ("reference-history", ("market-data-port", "client"))
     assert runtime.portfolio_port == ("portfolio-port", "client")
     assert runtime.execution_port_factory("hash-1") == ("execution-port", "client", "hash-1")
