@@ -50,7 +50,11 @@ def build_switch_plan(profile: str) -> dict[str, object]:
 
     set_env: dict[str, str] = {"STRATEGY_PROFILE": definition.profile}
     keep_env: list[str] = []
-    optional_env = ["SCHWAB_DRY_RUN_ONLY"]
+    optional_env = [
+        "SCHWAB_DRY_RUN_ONLY",
+        "SCHWAB_MIN_RESERVED_CASH_USD",
+        "SCHWAB_RESERVED_CASH_RATIO",
+    ]
     remove_if_present: list[str] = []
     notes = [
         "Schwab has a single service identity, so strategy switching mainly changes STRATEGY_PROFILE and any snapshot-config envs.",

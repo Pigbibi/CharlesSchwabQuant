@@ -171,6 +171,8 @@ def build_strategy_adapters():
         build_strategy_plugin_report_payload_fn=build_strategy_plugin_report_payload,
         load_configured_strategy_plugin_signals_fn=load_configured_strategy_plugin_signals,
         parse_strategy_plugin_mounts_fn=parse_strategy_plugin_mounts,
+        reserved_cash_floor_usd=RUNTIME_SETTINGS.reserved_cash_floor_usd,
+        reserved_cash_ratio=RUNTIME_SETTINGS.reserved_cash_ratio,
     )
 
 

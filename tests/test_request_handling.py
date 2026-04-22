@@ -63,6 +63,8 @@ def install_stub_modules(strategy_plugin_mounts_json=None, notify_lang="en"):
         strategy_domain="us_equity",
         notify_lang=notify_lang,
         dry_run_only=False,
+        reserved_cash_floor_usd=150.0,
+        reserved_cash_ratio=0.03,
         strategy_plugin_mounts_json=strategy_plugin_mounts_json,
     )
 

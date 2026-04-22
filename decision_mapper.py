@@ -11,6 +11,27 @@ from quant_platform_kit.strategy_contracts import (
 )
 
 
+def _resolve_reserved_cash(
+    *,
+    snapshot,
+    diagnostics: dict[str, Any],
+    execution_annotations: dict[str, Any],
+    runtime_metadata: dict[str, Any],
+) -> float:
+    base_reserved_cash = float(
+        execution_annotations.get("reserved_cash", diagnostics.get("reserved", 0.0)) or 0.0
+    )
+    raw_policy = runtime_metadata.get("schwab_execution_policy")
+    if not isinstance(raw_policy, dict):
+        return base_reserved_cash
+    total_equity = max(0.0, float(getattr(snapshot, "total_equity", 0.0) or 0.0))
+    reserved_cash_floor_usd = max(0.0, float(raw_policy.get("reserved_cash_floor_usd", 0.0) or 0.0))
+    reserved_cash_ratio = float(raw_policy.get("reserved_cash_ratio", 0.0) or 0.0)
+    reserved_cash_ratio = max(0.0, min(1.0, reserved_cash_ratio))
+    policy_reserved_cash = max(reserved_cash_floor_usd, total_equity * reserved_cash_ratio)
+    return max(base_reserved_cash, policy_reserved_cash)
+
+
 def map_strategy_decision_to_plan(
     decision: StrategyDecision,
     *,
@@ -32,6 +53,12 @@ def map_strategy_decision_to_plan(
     raw_annotations = diagnostics.get("execution_annotations")
     if isinstance(raw_annotations, dict):
         execution_annotations.update(raw_annotations)
+    reserved_cash = _resolve_reserved_cash(
+        snapshot=snapshot,
+        diagnostics=diagnostics,
+        execution_annotations=execution_annotations,
+        runtime_metadata=runtime_metadata,
+    )
     portfolio_inputs = build_value_target_portfolio_inputs_from_snapshot(snapshot)
     plan = build_value_target_runtime_plan(
         normalized_decision,
@@ -88,7 +115,7 @@ def map_strategy_decision_to_plan(
             trade_threshold_value=float(
                 execution_annotations.get("trade_threshold_value", diagnostics.get("threshold", 0.0)) or 0.0
             ),
-            reserved_cash=float(execution_annotations.get("reserved_cash", diagnostics.get("reserved", 0.0)) or 0.0),
+            reserved_cash=reserved_cash,
             signal_display=str(
                 execution_annotations.get("signal_display")
                 or diagnostics.get("signal_display")

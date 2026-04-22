@@ -19,6 +19,8 @@ SWITCH_PLAN_SCRIPT_PATH = ROOT / "scripts" / "print_strategy_switch_env_plan.py"
 
 from runtime_config_support import (  # noqa: E402
     DEFAULT_NOTIFY_LANG,
+    DEFAULT_RESERVED_CASH_FLOOR_USD,
+    DEFAULT_RESERVED_CASH_RATIO,
     load_platform_runtime_settings,
 )
 from strategy_registry import (
@@ -44,6 +46,8 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         self.assertEqual(settings.strategy_domain, US_EQUITY_DOMAIN)
         self.assertEqual(settings.notify_lang, DEFAULT_NOTIFY_LANG)
         self.assertFalse(settings.dry_run_only)
+        self.assertEqual(settings.reserved_cash_floor_usd, DEFAULT_RESERVED_CASH_FLOOR_USD)
+        self.assertEqual(settings.reserved_cash_ratio, DEFAULT_RESERVED_CASH_RATIO)
         self.assertIsNone(settings.feature_snapshot_path)
         self.assertIsNone(settings.feature_snapshot_manifest_path)
         self.assertIsNone(settings.strategy_config_path)
@@ -113,6 +117,33 @@ class RuntimeConfigSupportTests(unittest.TestCase):
             settings = load_platform_runtime_settings()
 
         self.assertTrue(settings.dry_run_only)
+
+    def test_reads_reserved_cash_policy_overrides(self):
+        with patch.dict(
+            os.environ,
+            {
+                "STRATEGY_PROFILE": SAMPLE_STRATEGY_PROFILE,
+                "SCHWAB_MIN_RESERVED_CASH_USD": "80",
+                "SCHWAB_RESERVED_CASH_RATIO": "0.025",
+            },
+            clear=True,
+        ):
+            settings = load_platform_runtime_settings()
+
+        self.assertEqual(settings.reserved_cash_floor_usd, 80.0)
+        self.assertEqual(settings.reserved_cash_ratio, 0.025)
+
+    def test_rejects_invalid_reserved_cash_ratio(self):
+        with patch.dict(
+            os.environ,
+            {
+                "STRATEGY_PROFILE": SAMPLE_STRATEGY_PROFILE,
+                "SCHWAB_RESERVED_CASH_RATIO": "1.25",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(ValueError, "SCHWAB_RESERVED_CASH_RATIO must be in \\[0,1\\]"):
+                load_platform_runtime_settings()
 
     def test_reads_strategy_plugin_mounts_from_global_env(self):
         with patch.dict(
@@ -317,6 +348,8 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         self.assertFalse(plan["requires_snapshot_artifacts"])
         self.assertFalse(plan["requires_strategy_config_path"])
         self.assertEqual(plan["set_env"]["STRATEGY_PROFILE"], "global_etf_rotation")
+        self.assertIn("SCHWAB_MIN_RESERVED_CASH_USD", plan["optional_env"])
+        self.assertIn("SCHWAB_RESERVED_CASH_RATIO", plan["optional_env"])
         self.assertIn("SCHWAB_FEATURE_SNAPSHOT_PATH", plan["remove_if_present"])
 
     def test_print_strategy_switch_env_plan_for_tech_communication_pullback_enhancement(self):
