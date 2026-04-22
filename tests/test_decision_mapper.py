@@ -91,6 +91,63 @@ class DecisionMapperTests(unittest.TestCase):
         self.assertEqual(plan["execution"]["signal_display"], "hold")
         self.assertEqual(plan["execution"]["dashboard_text"], "dashboard")
 
+    def test_applies_platform_reserved_cash_floor_for_weight_targets(self):
+        snapshot = SimpleNamespace(
+            total_equity=1000.0,
+            buying_power=400.0,
+            positions=(SimpleNamespace(symbol="AAPL", quantity=1, market_value=400.0),),
+            metadata={"account_hash": "demo"},
+        )
+        decision = StrategyDecision(
+            positions=(PositionTarget(symbol="AAPL", target_weight=0.40),),
+            diagnostics={"signal_display": "hold"},
+        )
+
+        plan = map_strategy_decision_to_plan(
+            decision,
+            snapshot=snapshot,
+            strategy_profile="tech_communication_pullback_enhancement",
+            runtime_metadata={
+                "schwab_execution_policy": {
+                    "reserved_cash_floor_usd": 150.0,
+                    "reserved_cash_ratio": 0.03,
+                }
+            },
+        )
+
+        self.assertEqual(plan["execution"]["reserved_cash"], 150.0)
+
+    def test_platform_reserved_cash_floor_can_raise_strategy_reserve(self):
+        snapshot = SimpleNamespace(
+            total_equity=120000.0,
+            buying_power=20000.0,
+            positions=(SimpleNamespace(symbol="TQQQ", quantity=10, market_value=8000.0),),
+            metadata={"account_hash": "demo"},
+        )
+        decision = StrategyDecision(
+            positions=(PositionTarget(symbol="TQQQ", target_value=30000.0),),
+            diagnostics={
+                "execution_annotations": {
+                    "trade_threshold_value": 500.0,
+                    "reserved_cash": 1200.0,
+                }
+            },
+        )
+
+        plan = map_strategy_decision_to_plan(
+            decision,
+            snapshot=snapshot,
+            strategy_profile="tqqq_growth_income",
+            runtime_metadata={
+                "schwab_execution_policy": {
+                    "reserved_cash_floor_usd": 150.0,
+                    "reserved_cash_ratio": 0.03,
+                }
+            },
+        )
+
+        self.assertEqual(plan["execution"]["reserved_cash"], 3600.0)
+
     def test_translates_weight_targets_for_tech_communication_pullback_enhancement(self):
         snapshot = SimpleNamespace(
             total_equity=100000.0,

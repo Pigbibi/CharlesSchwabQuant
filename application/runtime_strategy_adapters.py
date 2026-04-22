@@ -25,6 +25,8 @@ class SchwabRuntimeStrategyAdapters:
     build_strategy_plugin_report_payload_fn: Callable[..., dict[str, Any]]
     load_configured_strategy_plugin_signals_fn: Callable[..., Any]
     parse_strategy_plugin_mounts_fn: Callable[..., Any]
+    reserved_cash_floor_usd: float = 0.0
+    reserved_cash_ratio: float = 0.0
 
     def load_strategy_plugin_signals(self, raw_mounts):
         if not raw_mounts:
@@ -171,11 +173,16 @@ class SchwabRuntimeStrategyAdapters:
             signal_text_fn=self.signal_text_fn,
         )
         evaluation = self.strategy_runtime.evaluate(**evaluation_inputs)
+        runtime_metadata = dict(getattr(evaluation, "metadata", None) or {})
+        runtime_metadata["schwab_execution_policy"] = {
+            "reserved_cash_floor_usd": float(self.reserved_cash_floor_usd or 0.0),
+            "reserved_cash_ratio": float(self.reserved_cash_ratio or 0.0),
+        }
         return self.map_strategy_decision_to_plan_fn(
             evaluation.decision,
             snapshot=snapshot,
             strategy_profile=self.strategy_profile,
-            runtime_metadata=getattr(evaluation, "metadata", None),
+            runtime_metadata=runtime_metadata,
         )
 
 
@@ -195,6 +202,8 @@ def build_runtime_strategy_adapters(
     build_strategy_plugin_report_payload_fn: Callable[..., dict[str, Any]],
     load_configured_strategy_plugin_signals_fn: Callable[..., Any],
     parse_strategy_plugin_mounts_fn: Callable[..., Any],
+    reserved_cash_floor_usd: float = 0.0,
+    reserved_cash_ratio: float = 0.0,
 ) -> SchwabRuntimeStrategyAdapters:
     return SchwabRuntimeStrategyAdapters(
         strategy_runtime=strategy_runtime,
@@ -211,4 +220,6 @@ def build_runtime_strategy_adapters(
         build_strategy_plugin_report_payload_fn=build_strategy_plugin_report_payload_fn,
         load_configured_strategy_plugin_signals_fn=load_configured_strategy_plugin_signals_fn,
         parse_strategy_plugin_mounts_fn=parse_strategy_plugin_mounts_fn,
+        reserved_cash_floor_usd=float(reserved_cash_floor_usd or 0.0),
+        reserved_cash_ratio=float(reserved_cash_ratio or 0.0),
     )
