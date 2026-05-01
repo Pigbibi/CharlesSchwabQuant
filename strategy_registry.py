@@ -22,15 +22,7 @@ from quant_platform_kit.common.strategies import (
 
 SCHWAB_PLATFORM = "schwab"
 
-RESEARCH_ONLY_ARCHIVED_PROFILES = frozenset(
-    {
-        "dynamic_mega_leveraged_pullback",
-        "mega_cap_leader_rotation_aggressive",
-        "mega_cap_leader_rotation_dynamic_top20",
-    }
-)
-
-SCHWAB_ROLLOUT_ALLOWLIST = get_runtime_enabled_profiles() - RESEARCH_ONLY_ARCHIVED_PROFILES
+SCHWAB_ROLLOUT_ALLOWLIST = get_runtime_enabled_profiles()
 
 PLATFORM_SUPPORTED_DOMAINS: dict[str, frozenset[str]] = {
     SCHWAB_PLATFORM: frozenset({US_EQUITY_DOMAIN}),
