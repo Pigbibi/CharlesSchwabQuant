@@ -93,10 +93,7 @@ I18N = {
         "strategy_name_russell_1000_multi_factor_defensive": "罗素1000多因子",
         "strategy_name_tech_communication_pullback_enhancement": "科技通信回调增强",
         "strategy_name_qqq_tech_enhancement": "科技通信回调增强",
-        "strategy_name_mega_cap_leader_rotation_aggressive": "Mega Cap 激进龙头轮动",
-        "strategy_name_mega_cap_leader_rotation_dynamic_top20": "Mega Cap 动态 Top20 龙头轮动",
         "strategy_name_mega_cap_leader_rotation_top50_balanced": "Mega Cap Top50 平衡龙头轮动",
-        "strategy_name_dynamic_mega_leveraged_pullback": "Mega Cap 2x 回调策略",
     },
     "en": {
         "trade_header": "🔔 【Trade Execution Report】",
@@ -176,10 +173,7 @@ I18N = {
         "strategy_name_russell_1000_multi_factor_defensive": "Russell 1000 Multi-Factor",
         "strategy_name_tech_communication_pullback_enhancement": "Tech/Communication Pullback Enhancement",
         "strategy_name_qqq_tech_enhancement": "Tech/Communication Pullback Enhancement",
-        "strategy_name_mega_cap_leader_rotation_aggressive": "Mega Cap Leader Rotation Aggressive",
-        "strategy_name_mega_cap_leader_rotation_dynamic_top20": "Mega Cap Leader Rotation Dynamic Top20",
         "strategy_name_mega_cap_leader_rotation_top50_balanced": "Mega Cap Leader Rotation Top50 Balanced",
-        "strategy_name_dynamic_mega_leveraged_pullback": "Dynamic Mega Leveraged Pullback",
     },
 }
 

@@ -91,10 +91,7 @@ class RuntimeConfigSupportTests(unittest.TestCase):
             frozenset(
                 {
                     SAMPLE_STRATEGY_PROFILE,
-                    "dynamic_mega_leveraged_pullback",
                     "global_etf_rotation",
-                    "mega_cap_leader_rotation_aggressive",
-                    "mega_cap_leader_rotation_dynamic_top20",
                     "mega_cap_leader_rotation_top50_balanced",
                     "russell_1000_multi_factor_defensive",
                     "soxl_soxx_trend_income",
@@ -195,10 +192,7 @@ class RuntimeConfigSupportTests(unittest.TestCase):
             set(by_profile),
             {
                 "tqqq_growth_income",
-                "dynamic_mega_leveraged_pullback",
                 "global_etf_rotation",
-                "mega_cap_leader_rotation_aggressive",
-                "mega_cap_leader_rotation_dynamic_top20",
                 "mega_cap_leader_rotation_top50_balanced",
                 "russell_1000_multi_factor_defensive",
                 "soxl_soxx_trend_income",
@@ -241,25 +235,11 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         self.assertTrue(by_profile["tech_communication_pullback_enhancement"]["eligible"])
         self.assertTrue(by_profile["tech_communication_pullback_enhancement"]["enabled"])
         self.assertEqual(
-            by_profile["mega_cap_leader_rotation_dynamic_top20"]["display_name"],
-            "Mega Cap Leader Rotation Dynamic Top20",
-        )
-        self.assertTrue(by_profile["mega_cap_leader_rotation_dynamic_top20"]["eligible"])
-        self.assertFalse(by_profile["mega_cap_leader_rotation_dynamic_top20"]["enabled"])
-        self.assertEqual(
             by_profile["mega_cap_leader_rotation_top50_balanced"]["display_name"],
             "Mega Cap Leader Rotation Top50 Balanced",
         )
         self.assertTrue(by_profile["mega_cap_leader_rotation_top50_balanced"]["eligible"])
         self.assertTrue(by_profile["mega_cap_leader_rotation_top50_balanced"]["enabled"])
-        self.assertEqual(
-            by_profile["dynamic_mega_leveraged_pullback"]["display_name"],
-            "Dynamic Mega Leveraged Pullback",
-        )
-        self.assertTrue(by_profile["dynamic_mega_leveraged_pullback"]["eligible"])
-        self.assertFalse(by_profile["dynamic_mega_leveraged_pullback"]["enabled"])
-        self.assertTrue(by_profile["mega_cap_leader_rotation_aggressive"]["eligible"])
-        self.assertFalse(by_profile["mega_cap_leader_rotation_aggressive"]["enabled"])
 
     def test_print_strategy_profile_status_json_matches_registry(self):
         result = subprocess.run(
@@ -296,9 +276,6 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         self.assertEqual(by_profile["tech_communication_pullback_enhancement"]["input_mode"], "feature_snapshot")
         self.assertTrue(by_profile["tech_communication_pullback_enhancement"]["requires_snapshot_artifacts"])
         self.assertTrue(by_profile["tech_communication_pullback_enhancement"]["requires_strategy_config_path"])
-        self.assertFalse(by_profile["mega_cap_leader_rotation_dynamic_top20"]["enabled"])
-        self.assertFalse(by_profile["mega_cap_leader_rotation_aggressive"]["enabled"])
-        self.assertFalse(by_profile["dynamic_mega_leveraged_pullback"]["enabled"])
         self.assertEqual(by_profile["mega_cap_leader_rotation_top50_balanced"]["profile_group"], "snapshot_backed")
         self.assertEqual(by_profile["mega_cap_leader_rotation_top50_balanced"]["input_mode"], "feature_snapshot")
         self.assertTrue(by_profile["mega_cap_leader_rotation_top50_balanced"]["requires_snapshot_artifacts"])
@@ -322,8 +299,6 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         self.assertIn("requires_snapshot_artifacts", result.stdout)
         self.assertIn("tqqq_growth_income", result.stdout)
         self.assertIn("global_etf_rotation", result.stdout)
-        self.assertIn("mega_cap_leader_rotation_dynamic_top20", result.stdout)
-        self.assertIn("dynamic_mega_leveraged_pullback", result.stdout)
         self.assertIn("russell_1000_multi_factor_defensive", result.stdout)
         self.assertIn("TQQQ Growth Income", result.stdout)
         self.assertIn("Global ETF Rotation", result.stdout)
