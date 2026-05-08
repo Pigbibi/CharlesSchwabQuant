@@ -229,6 +229,8 @@ jobs:
 
       - name: Sync Cloud Run environment
         if: steps.config.outputs.enabled == 'true'
+        env:
+          RUNTIME_TARGET_JSON: ${{ steps.strategy_requirements.outputs.runtime_target_json }}
         run: |
           set -euo pipefail
 
