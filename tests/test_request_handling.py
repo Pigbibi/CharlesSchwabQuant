@@ -294,6 +294,78 @@ class RequestHandlingTests(unittest.TestCase):
         self.assertEqual(plugin_summary["canonical_route"], "no_action")
         self.assertEqual(plugin_summary["suggested_action"], "monitor")
 
+    def test_handle_schwab_rehearses_triggered_shadow_plugin_report(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            signal_path = Path(temp_dir) / "latest_signal.json"
+            signal_path.write_text(
+                json.dumps(
+                    {
+                        "strategy": "tqqq_growth_income",
+                        "plugin": "crisis_response_shadow",
+                        "mode": "shadow",
+                        "configured_mode": "shadow",
+                        "effective_mode": "shadow",
+                        "schema_version": "crisis_response_shadow.v1",
+                        "as_of": "2008-03-10",
+                        "canonical_route": "true_crisis",
+                        "suggested_action": "defend",
+                        "would_trade_if_enabled": True,
+                        "execution_controls": {
+                            "broker_order_allowed": False,
+                            "live_allocation_mutation_allowed": False,
+                            "repository_broker_write_allowed": False,
+                            "repository_allocation_mutation_allowed": False,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mount_config = json.dumps(
+                {
+                    "strategy_plugins": [
+                        {
+                            "strategy": "tqqq_growth_income",
+                            "plugin": "crisis_response_shadow",
+                            "signal_path": str(signal_path),
+                            "enabled": True,
+                            "expected_mode": "shadow",
+                        }
+                    ]
+                }
+            )
+            module = load_module(strategy_plugin_mounts_json=mount_config)
+            observed = {}
+
+            module.get_client_from_secret = lambda *args, **kwargs: object()
+            module.is_market_open_today = lambda: True
+            module.persist_execution_report = (
+                lambda report: observed.setdefault("report", report) or "/tmp/report.json"
+            )
+
+            def fake_run_strategy_core(client, now_ny, *, strategy_plugin_signals=()):
+                observed["signals"] = strategy_plugin_signals
+                self.assertEqual(len(strategy_plugin_signals), 1)
+                signal = strategy_plugin_signals[0]
+                self.assertTrue(signal.would_trade_if_enabled)
+                self.assertEqual(signal.canonical_route, "true_crisis")
+                self.assertEqual(signal.suggested_action, "defend")
+                self.assertFalse(signal.execution_controls["broker_order_allowed"])
+                self.assertFalse(signal.execution_controls["live_allocation_mutation_allowed"])
+
+            module.run_strategy_core = fake_run_strategy_core
+
+            with module.app.test_request_context("/", method="POST"):
+                body, status = module.handle_schwab()
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body, "OK")
+        plugin_summary = observed["report"]["summary"]["strategy_plugins"][0]
+        self.assertEqual(plugin_summary["canonical_route"], "true_crisis")
+        self.assertEqual(plugin_summary["suggested_action"], "defend")
+        self.assertTrue(plugin_summary["would_trade_if_enabled"])
+        self.assertFalse(plugin_summary["execution_controls"]["broker_order_allowed"])
+        self.assertFalse(plugin_summary["execution_controls"]["live_allocation_mutation_allowed"])
+
     def test_strategy_plugin_notification_line_uses_i18n(self):
         module = load_module(notify_lang="zh")
         signal = types.SimpleNamespace(
@@ -310,6 +382,21 @@ class RequestHandlingTests(unittest.TestCase):
         self.assertIn("模式：影子观察", lines[0])
         self.assertIn("路由：不操作", lines[0])
         self.assertIn("建议：仅观察", lines[0])
+
+    def test_strategy_plugin_notification_line_renders_triggered_shadow_signal(self):
+        module = load_module(notify_lang="zh")
+        signal = types.SimpleNamespace(
+            plugin="crisis_response_shadow",
+            effective_mode="shadow",
+            canonical_route="true_crisis",
+            suggested_action="defend",
+        )
+
+        lines = module.build_strategy_plugin_notification_lines((signal,))
+
+        self.assertEqual(len(lines), 1)
+        self.assertIn("路由：真危机", lines[0])
+        self.assertIn("建议：防守", lines[0])
 
     def test_handle_schwab_reports_plugin_config_error_without_blocking_strategy(self):
         mount_config = json.dumps(
