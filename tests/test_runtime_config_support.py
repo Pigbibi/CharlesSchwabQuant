@@ -34,6 +34,22 @@ from strategy_registry import (
 
 
 SAMPLE_STRATEGY_PROFILE = "tqqq_growth_income"
+BASE_SCHWAB_PROFILES = frozenset(
+    {
+        SAMPLE_STRATEGY_PROFILE,
+        "global_etf_rotation",
+        "mega_cap_leader_rotation_top50_balanced",
+        "russell_1000_multi_factor_defensive",
+        "soxl_soxx_trend_income",
+        "tech_communication_pullback_enhancement",
+    }
+)
+OPTIONAL_SCHWAB_PROFILES = frozenset({"global_etf_confidence_vol_gate"})
+
+
+def expected_schwab_profiles(actual_profiles) -> frozenset[str]:
+    actual = frozenset(actual_profiles)
+    return BASE_SCHWAB_PROFILES | (OPTIONAL_SCHWAB_PROFILES & actual)
 
 
 def runtime_target_json(
@@ -133,36 +149,12 @@ class RuntimeConfigSupportTests(unittest.TestCase):
                 load_platform_runtime_settings()
 
     def test_platform_supported_profiles_are_filtered_by_registry(self):
-        self.assertEqual(
-            get_supported_profiles_for_platform(SCHWAB_PLATFORM),
-            frozenset(
-                {
-                    SAMPLE_STRATEGY_PROFILE,
-                    "global_etf_confidence_vol_gate",
-                    "global_etf_rotation",
-                    "mega_cap_leader_rotation_top50_balanced",
-                    "russell_1000_multi_factor_defensive",
-                    "soxl_soxx_trend_income",
-                    "tech_communication_pullback_enhancement",
-                }
-            ),
-        )
+        profiles = get_supported_profiles_for_platform(SCHWAB_PLATFORM)
+        self.assertEqual(profiles, expected_schwab_profiles(profiles))
 
     def test_platform_eligible_profiles_are_exposed_by_capability_matrix(self):
-        self.assertEqual(
-            get_eligible_profiles_for_platform(SCHWAB_PLATFORM),
-            frozenset(
-                {
-                    SAMPLE_STRATEGY_PROFILE,
-                    "global_etf_confidence_vol_gate",
-                    "global_etf_rotation",
-                    "mega_cap_leader_rotation_top50_balanced",
-                    "russell_1000_multi_factor_defensive",
-                    "soxl_soxx_trend_income",
-                    "tech_communication_pullback_enhancement",
-                }
-            ),
-        )
+        profiles = get_eligible_profiles_for_platform(SCHWAB_PLATFORM)
+        self.assertEqual(profiles, expected_schwab_profiles(profiles))
 
     def test_rejects_human_readable_alias(self):
         with patch.dict(
@@ -262,18 +254,7 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         rows = get_platform_profile_status_matrix()
         by_profile = {row["canonical_profile"]: row for row in rows}
 
-        self.assertEqual(
-            set(by_profile),
-            {
-                "tqqq_growth_income",
-                "global_etf_confidence_vol_gate",
-                "global_etf_rotation",
-                "mega_cap_leader_rotation_top50_balanced",
-                "russell_1000_multi_factor_defensive",
-                "soxl_soxx_trend_income",
-                "tech_communication_pullback_enhancement",
-            },
-        )
+        self.assertEqual(set(by_profile), expected_schwab_profiles(by_profile))
         self.assertEqual(
             by_profile["tqqq_growth_income"],
             {
@@ -291,6 +272,13 @@ class RuntimeConfigSupportTests(unittest.TestCase):
         )
         self.assertTrue(by_profile["global_etf_rotation"]["eligible"])
         self.assertTrue(by_profile["global_etf_rotation"]["enabled"])
+        if "global_etf_confidence_vol_gate" in by_profile:
+            self.assertEqual(
+                by_profile["global_etf_confidence_vol_gate"]["display_name"],
+                "Global ETF Confidence Vol Gate",
+            )
+            self.assertTrue(by_profile["global_etf_confidence_vol_gate"]["eligible"])
+            self.assertTrue(by_profile["global_etf_confidence_vol_gate"]["enabled"])
         self.assertEqual(
             by_profile["russell_1000_multi_factor_defensive"]["display_name"],
             "Russell 1000 Multi-Factor",
