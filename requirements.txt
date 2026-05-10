@@ -1,7 +1,7 @@
 flask
 gunicorn
-quant-platform-kit @ git+https://github.com/QuantStrategyLab/QuantPlatformKit.git@573fc9e9917cf1f2c1acda9232c5a23a8a05d797
-us-equity-strategies @ git+https://github.com/QuantStrategyLab/UsEquityStrategies.git@53911cbe32f6932e759522e54aa38ca5350aa44e
+quant-platform-kit @ git+https://github.com/QuantStrategyLab/QuantPlatformKit.git@8769362096227320bc05c791b5244d4b3e88db50
+us-equity-strategies @ git+https://github.com/QuantStrategyLab/UsEquityStrategies.git@ed55a6af0245323dbed82060e89be96d8f77f756
 pandas
 requests
 pandas_market_calendars

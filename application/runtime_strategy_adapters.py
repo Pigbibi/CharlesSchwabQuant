@@ -6,6 +6,7 @@ from collections.abc import Collection, Mapping, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from quant_platform_kit.common.runtime_inputs import build_semiconductor_rotation_indicators_from_history
 from quant_platform_kit.strategy_contracts import build_account_state_from_portfolio_snapshot
 
 
@@ -119,29 +120,11 @@ class SchwabRuntimeStrategyAdapters:
         if len(soxx_history) < trend_window:
             raise RuntimeError(f"SOXX history has {len(soxx_history)} candles; need at least {trend_window}")
 
-        soxl_closes = [float(candle["close"]) for candle in soxl_history[-trend_window:]]
-        soxx_all_closes = [float(candle["close"]) for candle in soxx_history]
-        soxx_trend_closes = soxx_all_closes[-trend_window:]
-        soxx_ma20_closes = soxx_all_closes[-20:]
-        previous_soxx_ma20_closes = soxx_all_closes[-21:-1]
-        soxx_ma20 = sum(soxx_ma20_closes) / 20
-        previous_soxx_ma20 = (
-            sum(previous_soxx_ma20_closes) / 20
-            if len(previous_soxx_ma20_closes) == 20
-            else soxx_ma20
+        return build_semiconductor_rotation_indicators_from_history(
+            soxl_history=(float(candle["close"]) for candle in soxl_history),
+            soxx_history=(float(candle["close"]) for candle in soxx_history),
+            trend_ma_window=trend_window,
         )
-        return {
-            "soxl": {
-                "price": soxl_closes[-1],
-                "ma_trend": sum(soxl_closes) / trend_window,
-            },
-            "soxx": {
-                "price": soxx_all_closes[-1],
-                "ma_trend": sum(soxx_trend_closes) / trend_window,
-                "ma20": soxx_ma20,
-                "ma20_slope": soxx_ma20 - previous_soxx_ma20,
-            },
-        }
 
     def build_account_state_from_snapshot(self, snapshot) -> dict[str, object]:
         return build_account_state_from_portfolio_snapshot(

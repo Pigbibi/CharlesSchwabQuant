@@ -477,6 +477,12 @@ class RequestHandlingTests(unittest.TestCase):
         self.assertAlmostEqual(indicators["soxx"]["ma_trend"], sum(210.0 + idx for idx in range(10, 160)) / 150)
         self.assertAlmostEqual(indicators["soxx"]["ma20"], sum(210.0 + idx for idx in range(140, 160)) / 20)
         self.assertGreater(indicators["soxx"]["ma20_slope"], 0.0)
+        self.assertEqual(indicators["soxx"]["rsi14"], 100.0)
+        self.assertIn("realized_volatility_20", indicators["soxx"])
+        self.assertEqual(
+            indicators["soxx"]["realized_volatility"],
+            indicators["soxx"]["realized_volatility_20"],
+        )
 
 
 if __name__ == "__main__":
