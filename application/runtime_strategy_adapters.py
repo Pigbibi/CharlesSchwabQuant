@@ -54,10 +54,6 @@ class SchwabRuntimeStrategyAdapters:
 
     def translate_strategy_plugin_value(self, category: str, raw_value: str | None) -> str:
         value = str(raw_value or "").strip() or "unknown"
-        if category == "route" and value == "taco_fake_crisis":
-            value = "unknown_route"
-        elif category == "action" and value == "small_taco":
-            value = "unknown_action"
         key = f"strategy_plugin_{category}_{value}"
         translated = self.translator(key)
         return translated if translated != key else value
