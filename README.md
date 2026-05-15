@@ -70,7 +70,7 @@ Each HTTP request runs one broker execution cycle. The Cloud Scheduler cron shou
 | `TELEGRAM_TOKEN` | Telegram bot token; recommended to inject from Secret Manager secret `charles-schwab-telegram-token` |
 | `GLOBAL_TELEGRAM_CHAT_ID` | Telegram chat ID used by this service. |
 | `GOOGLE_CLOUD_PROJECT` | GCP project ID |
-| `STRATEGY_PROFILE` | Strategy profile selector. Set explicitly per deployment; current enabled values include `global_etf_rotation`, `mega_cap_leader_rotation_top50_balanced`, `russell_1000_multi_factor_defensive`, `tqqq_growth_income`, `soxl_soxx_trend_income`, and `tech_communication_pullback_enhancement` |
+| `STRATEGY_PROFILE` | Strategy profile selector. Set explicitly per deployment to one `runtime_enabled` `us_equity` profile. |
 | `SCHWAB_STRATEGY_PLUGIN_MOUNTS_JSON` | Optional Schwab-side strategy plugin mount JSON. Prefer this Schwab-specific variable; `STRATEGY_PLUGIN_MOUNTS_JSON` is only a shared fallback. |
 | `SCHWAB_MIN_RESERVED_CASH_USD` | Optional platform cash-reserve floor in USD. Default policy: keep `150 USD` or `3% of total equity`, whichever is larger. Runtime formula: `max(floor, ratio * total_equity)`. |
 | `SCHWAB_RESERVED_CASH_RATIO` | Optional platform cash-reserve ratio. Default policy: keep `150 USD` or `3% of total equity`, whichever is larger. Runtime formula: `max(floor, ratio * total_equity)`. |
@@ -139,7 +139,7 @@ Important:
 - If you later rename or move this repository, reselect the GitHub source in Cloud Build / Cloud Run trigger instead of assuming the previous source binding will follow the rename.
 - For the shared deployment model and trigger migration checklist, see [`QuantPlatformKit/docs/deployment_model.md`](../QuantPlatformKit/docs/deployment_model.md).
 
-Deploy as a Cloud Run service and trigger the root URL on a schedule chosen from the strategy-layer cadence in `UsEquityStrategies`. Entry point: Flask route `"/"` in `main.py`.
+Deploy as a Cloud Run service and trigger two open-window checks plus the close-window execution: `"/precheck"` at open+15 minutes, `"/probe"` at open+30 minutes, and the root URL near the close window. Set the Scheduler OIDC audience to the Cloud Run service root URL, not the route path. Base the cron cadence on `UsEquityStrategies`. Entry points: Flask routes `"/precheck"`, `"/probe"`, and `"/"` in `main.py`.
 
 ---
 
@@ -172,7 +172,7 @@ Schwab runtime 现在可以直接执行 `UsEquityStrategies` 里的 6 条 `runti
 
 Telegram 通知包含结构化的调仓和心跳消息，支持中英文切换。策略相关的信号/状态字段来自当前选择的 `UsEquityStrategies` profile；Schwab 侧负责账户快照、下单和运行时异常处理。
 
-每个 HTTP 请求执行一次券商运行周期。Cloud Scheduler 的 cron 应以 `UsEquityStrategies` 里的策略层频率为准。
+每个 HTTP 请求执行一次券商运行周期。Cloud Scheduler 应在开盘后 15 分钟跑 `"/precheck"`，30 分钟跑 `"/probe"`，临近收盘跑 `"/"`；OIDC audience 也要指向 Cloud Run 服务根 URL，而不是路由路径。cron 频率以 `UsEquityStrategies` 里的策略层频率为准。
 
 ### 环境变量
 
@@ -252,4 +252,4 @@ Schwab OAuth token payload 当前从 Secret Manager 的 `schwab_token` 里读取
 - 如果后面改 GitHub 仓库名或再次迁组织，Cloud Build / Cloud Run 里的 GitHub 来源需要重新选择，不要假设旧绑定会自动跟过去。
 - 统一部署模型和触发器迁移清单见 [`QuantPlatformKit/docs/deployment_model.md`](../QuantPlatformKit/docs/deployment_model.md)。
 
-部署为 Cloud Run 服务，定时触发根 URL（如每交易日一次）。入口：`main.py` 中的 Flask 路由 `"/"`。
+部署为 Cloud Run 服务，按策略层 cadence 配三次定时触发：开盘后 15 分钟用 `"/precheck"` 做预检，开盘后 30 分钟用 `"/probe"` 做连接探针，临近收盘用 `"/"` 做正式执行。Scheduler 的 OIDC audience 要指向 Cloud Run 服务根 URL，不要拼到 `"/probe"` 或 `"/precheck"`。入口：`main.py` 中的 Flask 路由 `"/precheck"`、`"/probe"` 和 `"/"`。

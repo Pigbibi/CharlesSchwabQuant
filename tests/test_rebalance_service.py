@@ -107,9 +107,12 @@ class RebalanceServiceTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(len(observed_orders), 1)
-        self.assertEqual(observed_orders[0].symbol, "QQQI")
-        self.assertEqual(observed_orders[0].order_type, "limit")
+        self.assertEqual(len(observed_orders), 2)
+        self.assertEqual(observed_orders[0].symbol, "BOXX")
+        self.assertEqual(observed_orders[0].side, "sell")
+        self.assertEqual(observed_orders[0].order_type, "market")
+        self.assertEqual(observed_orders[1].symbol, "QQQI")
+        self.assertEqual(observed_orders[1].order_type, "limit")
         self.assertTrue(sent_messages)
         self.assertIn("trade", sent_messages[0].lower())
         self.assertIn("2026-04-21 -> 2026-04-22", sent_messages[0])

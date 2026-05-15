@@ -10,6 +10,7 @@ from application.runtime_dependencies import SchwabRebalanceConfig, SchwabRebala
 from application.runtime_notification_adapters import build_runtime_notification_adapters
 from application.runtime_reporting_adapters import build_runtime_reporting_adapters
 from quant_platform_kit.common.runtime_assembly import build_runtime_assembly
+from quant_platform_kit.common.port_adapters import CallableNotificationPort
 from quant_platform_kit.common.runtime_target import build_runtime_context_fields
 from quant_platform_kit.common.runtime_target import RuntimeTarget
 from notifications.telegram import build_sender
@@ -107,15 +108,20 @@ class SchwabRuntimeComposer:
             token_path=self.token_path,
         )
 
-    def build_rebalance_runtime(self, client):
+    def build_rebalance_runtime(self, client, *, silent_cycle_notifications: bool = False):
         notification_adapters = self.build_notification_adapters()
+        notifications = (
+            CallableNotificationPort(lambda _message: None)
+            if silent_cycle_notifications
+            else notification_adapters.notification_port
+        )
         market_data_port = self.broker_adapters.build_market_data_port(client)
         return SchwabRebalanceRuntime(
             fetch_reference_history=lambda: self.strategy_adapters.fetch_reference_history(market_data_port),
             portfolio_port=self.broker_adapters.build_portfolio_port(client),
             market_data_port=market_data_port,
             resolve_rebalance_plan=self.strategy_adapters.resolve_rebalance_plan,
-            notifications=notification_adapters.notification_port,
+            notifications=notifications,
             execution_port_factory=lambda account_hash: self.broker_adapters.build_execution_port(
                 client,
                 account_hash,

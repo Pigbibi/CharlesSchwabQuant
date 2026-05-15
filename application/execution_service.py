@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 
+from quant_platform_kit.common.cash_sweep import (
+    estimate_cash_sweep_sale_quantity_to_fund_buy,
+)
 from quant_platform_kit.common.models import OrderIntent
+from quant_platform_kit.common.quantity import format_quantity
 
 
 @dataclass(frozen=True)
@@ -157,6 +160,7 @@ def execute_rebalance_cycle(
             return False
 
     market_values = dict(portfolio["market_values"])
+    quantities = dict(portfolio["quantities"])
     target_values = dict(allocation["targets"])
     threshold = float(execution["trade_threshold_value"])
     cash_sweep_symbol = str(portfolio["cash_sweep_symbol"])
@@ -165,26 +169,30 @@ def execute_rebalance_cycle(
     buy_order_symbols = tuple(
         allocation.get("income_symbols", ()) + allocation.get("risk_symbols", ())
     )
+    funding_buy_candidates = [
+        symbol
+        for symbol in buy_order_symbols
+        if symbol != cash_sweep_symbol and (target_values[symbol] - market_values[symbol]) > threshold
+    ]
 
-    def cash_sweep_sale_quantity_to_fund_buy(max_quantity):
+    def cash_sweep_sale_quantity_to_fund_buy(max_quantity, candidate_symbols):
+        if max_quantity <= 0 or not cash_sweep_symbol:
+            return 0
         cash_sweep_price = quotes[cash_sweep_symbol]["lastPrice"]
         base_buying_power = buying_power_from_plan(portfolio, execution)
-        for buy_symbol in buy_order_symbols:
-            underweight_value = target_values[buy_symbol] - market_values[buy_symbol]
-            if underweight_value <= threshold:
-                continue
-            ask = quotes[buy_symbol]["askPrice"]
-            max_buy_quantity = int(underweight_value // ask)
-            if max_buy_quantity <= 0:
-                continue
-            required_buying_power = max_buy_quantity * ask
-            if base_buying_power >= required_buying_power:
-                return 0
-            return min(
-                max_quantity,
-                max(1, math.ceil((required_buying_power - base_buying_power) / cash_sweep_price)),
+        funding_needs = (
+            (
+                target_values[buy_symbol] - market_values[buy_symbol],
+                quotes[buy_symbol]["askPrice"],
             )
-        return 0
+            for buy_symbol in candidate_symbols
+        )
+        return estimate_cash_sweep_sale_quantity_to_fund_buy(
+            max_quantity,
+            cash_sweep_price,
+            base_buying_power,
+            funding_needs,
+        )
 
     sell_order_symbols = tuple(
         allocation.get("risk_symbols", ())
@@ -199,7 +207,7 @@ def execute_rebalance_cycle(
         if current > (target + threshold):
             quantity = int((current - target) // quotes[symbol]["lastPrice"])
             if symbol == cash_sweep_symbol:
-                quantity = cash_sweep_sale_quantity_to_fund_buy(quantity)
+                quantity = cash_sweep_sale_quantity_to_fund_buy(quantity, funding_buy_candidates)
                 if quantity <= 0:
                     continue
             if execute_fire_forget(symbol, "SELL", quantity):
@@ -209,6 +217,44 @@ def execute_rebalance_cycle(
                 if dry_run_only:
                     dry_run_sale_events.append(
                         (symbol, quantity, quantity * quotes[symbol]["lastPrice"])
+                    )
+
+    if (
+        not cash_sweep_sold_this_cycle
+        and funding_buy_candidates
+        and cash_sweep_symbol
+        and quantities.get(cash_sweep_symbol, 0.0) > 0.0
+    ):
+        sweep_quantity = cash_sweep_sale_quantity_to_fund_buy(
+            int(quantities[cash_sweep_symbol]),
+            funding_buy_candidates,
+        )
+        if sweep_quantity > 0:
+            sweep_price = round(float(quotes[cash_sweep_symbol]["lastPrice"]), 2)
+            if dry_run_only:
+                submitted = execute_fire_forget(
+                    cash_sweep_symbol,
+                    "SELL",
+                    sweep_quantity,
+                    sweep_price,
+                )
+            else:
+                submitted = execute_fire_forget(
+                    cash_sweep_symbol,
+                    "SELL",
+                    sweep_quantity,
+                    sweep_price,
+                )
+            if submitted:
+                sell_executed = True
+                cash_sweep_sold_this_cycle = True
+                if dry_run_only:
+                    dry_run_sale_events.append(
+                        (
+                            cash_sweep_symbol,
+                            sweep_quantity,
+                            sweep_quantity * sweep_price,
+                        )
                     )
 
     if sell_executed:
@@ -283,6 +329,15 @@ def execute_rebalance_cycle(
         quantity = int(estimated_buying_power // quotes[cash_sweep_symbol]["lastPrice"])
         if quantity > 0:
             if execute_fire_forget(cash_sweep_symbol, "BUY_MARKET", quantity):
+                trade_logs.append(
+                    translator(
+                        "cash_sweep_rebuy",
+                        symbol=cash_sweep_symbol,
+                        quantity=format_quantity(quantity),
+                        shares=translator("shares"),
+                        price=f"{quotes[cash_sweep_symbol]['lastPrice']:.2f}",
+                    )
+                )
                 buy_executed = True
 
     if (

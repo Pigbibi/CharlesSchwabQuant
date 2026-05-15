@@ -148,6 +148,36 @@ class DecisionMapperTests(unittest.TestCase):
 
         self.assertEqual(plan["execution"]["reserved_cash"], 3600.0)
 
+    def test_soxl_profile_keeps_strategy_reserve_without_platform_floor(self):
+        snapshot = SimpleNamespace(
+            total_equity=1175.76,
+            buying_power=201.75,
+            positions=(SimpleNamespace(symbol="SOXL", quantity=0, market_value=0.0),),
+            metadata={"account_hash": "demo"},
+        )
+        decision = StrategyDecision(
+            positions=(PositionTarget(symbol="SOXL", target_value=1000.0),),
+            diagnostics={
+                "execution_annotations": {
+                    "reserved_cash": 35.27,
+                }
+            },
+        )
+
+        plan = map_strategy_decision_to_plan(
+            decision,
+            snapshot=snapshot,
+            strategy_profile="soxl_soxx_trend_income",
+            runtime_metadata={
+                "schwab_execution_policy": {
+                    "reserved_cash_floor_usd": 150.0,
+                    "reserved_cash_ratio": 0.03,
+                }
+            },
+        )
+
+        self.assertEqual(plan["execution"]["reserved_cash"], 35.27)
+
     def test_translates_weight_targets_for_tech_communication_pullback_enhancement(self):
         snapshot = SimpleNamespace(
             total_equity=100000.0,

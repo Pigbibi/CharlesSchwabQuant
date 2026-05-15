@@ -176,7 +176,8 @@ def build_strategy_adapters():
     )
 
 
-def build_composer():
+def build_composer(*, dry_run_only_override: bool | None = None):
+    effective_dry_run_only = RUNTIME_SETTINGS.dry_run_only if dry_run_only_override is None else bool(dry_run_only_override)
     return build_runtime_composer(
         project_id=PROJECT_ID,
         service_name=SERVICE_NAME,
@@ -194,7 +195,7 @@ def build_composer():
         managed_symbols=MANAGED_SYMBOLS,
         benchmark_symbol=BENCHMARK_SYMBOL,
         signal_effective_after_trading_days=SIGNAL_EFFECTIVE_AFTER_TRADING_DAYS,
-        dry_run_only=RUNTIME_SETTINGS.dry_run_only,
+        dry_run_only=effective_dry_run_only,
         limit_buy_premium=LIMIT_BUY_PREMIUM,
         sell_settle_delay_sec=SELL_SETTLE_DELAY_SEC,
         post_sell_refresh_attempts=POST_SELL_REFRESH_ATTEMPTS,
@@ -228,8 +229,8 @@ def log_runtime_event(log_context, event, **fields):
     return build_composer().build_reporting_adapters().log_event(log_context, event, **fields)
 
 
-def build_execution_report(log_context):
-    return build_composer().build_reporting_adapters().build_report(log_context)
+def build_execution_report(log_context, *, dry_run_only_override: bool | None = None):
+    return build_composer(dry_run_only_override=dry_run_only_override).build_reporting_adapters().build_report(log_context)
 
 
 def load_strategy_plugin_signals():
@@ -254,8 +255,8 @@ def build_strategy_plugin_notification_lines(signals) -> tuple[str, ...]:
     return build_strategy_adapters().build_strategy_plugin_notification_lines(signals)
 
 
-def persist_execution_report(report):
-    return build_composer().build_reporting_adapters().persist_execution_report(report)
+def persist_execution_report(report, *, dry_run_only_override: bool | None = None):
+    return build_composer(dry_run_only_override=dry_run_only_override).build_reporting_adapters().persist_execution_report(report)
 
 
 def fetch_reference_history(market_data_port):
@@ -296,20 +297,24 @@ def resolve_rebalance_plan(*, qqq_history, snapshot):
     )
 
 
-def run_strategy_core(c, now_ny, *, strategy_plugin_signals=()):
-    composer = build_composer()
+def run_strategy_core(c, now_ny, *, strategy_plugin_signals=(), dry_run_only_override: bool | None = None):
+    composer = build_composer(dry_run_only_override=dry_run_only_override)
     return run_rebalance_cycle(
         c,
         now_ny,
-        runtime=composer.build_rebalance_runtime(c),
+        runtime=composer.build_rebalance_runtime(
+            c,
+            silent_cycle_notifications=bool(dry_run_only_override),
+        ),
         config=composer.build_rebalance_config(strategy_plugin_signals=strategy_plugin_signals),
     )
 
 
-@app.route("/", methods=["POST", "GET"])
-def handle_schwab():
-    log_context = build_composer().build_reporting_adapters().build_log_context()
-    report = build_execution_report(log_context)
+def _handle_schwab_cycle(*, dry_run_only_override: bool | None = None, response_body: str = "OK"):
+    composer = build_composer(dry_run_only_override=dry_run_only_override)
+    reporting_adapters = composer.build_reporting_adapters()
+    log_context = reporting_adapters.build_log_context()
+    report = build_execution_report(log_context, dry_run_only_override=dry_run_only_override)
     strategy_plugin_signals, strategy_plugin_error = load_strategy_plugin_signals()
     attach_strategy_plugin_report(
         report,
@@ -320,14 +325,16 @@ def handle_schwab():
         log_runtime_event(
             log_context,
             "strategy_cycle_received",
-            message="Received strategy execution request",
+            message="Received strategy precheck request" if dry_run_only_override else "Received strategy execution request",
+            execution_window="precheck" if dry_run_only_override else "execution",
         )
-        client = build_composer().build_client()
+        client = composer.build_client()
         if not is_market_open_today():
             log_runtime_event(
                 log_context,
                 "market_closed",
                 message="Market closed; skip strategy execution",
+                execution_window="precheck" if dry_run_only_override else "execution",
             )
             finalize_runtime_report(
                 report,
@@ -338,16 +345,23 @@ def handle_schwab():
         log_runtime_event(
             log_context,
             "strategy_cycle_started",
-            message="Starting strategy execution",
+            message="Starting strategy precheck" if dry_run_only_override else "Starting strategy execution",
+            execution_window="precheck" if dry_run_only_override else "execution",
         )
-        run_strategy_core(client, None, strategy_plugin_signals=strategy_plugin_signals)
+        run_strategy_core(
+            client,
+            None,
+            strategy_plugin_signals=strategy_plugin_signals,
+            dry_run_only_override=dry_run_only_override,
+        )
         finalize_runtime_report(report, status="ok")
         log_runtime_event(
             log_context,
             "strategy_cycle_completed",
-            message="Strategy execution completed",
+            message="Strategy precheck completed" if dry_run_only_override else "Strategy execution completed",
+            execution_window="precheck" if dry_run_only_override else "execution",
         )
-        return "OK", 200
+        return response_body, 200
     except Exception as exc:
         append_runtime_report_error(
             report,
@@ -369,10 +383,105 @@ def handle_schwab():
         return "Error", 500
     finally:
         try:
-            report_path = persist_execution_report(report)
+            if dry_run_only_override is None:
+                report_path = persist_execution_report(report)
+            else:
+                report_path = persist_execution_report(report, dry_run_only_override=dry_run_only_override)
             print(f"execution_report {report_path}", flush=True)
         except Exception as persist_exc:
             print(f"failed to persist execution report: {persist_exc}", flush=True)
+
+
+def _handle_schwab_probe(*, response_body: str = "Probe OK"):
+    composer = None
+    log_context = None
+    report = None
+    try:
+        composer = build_composer()
+        reporting_adapters = composer.build_reporting_adapters()
+        log_context = reporting_adapters.build_log_context()
+        report = build_execution_report(log_context)
+        strategy_plugin_signals, strategy_plugin_error = load_strategy_plugin_signals()
+        attach_strategy_plugin_report(
+            report,
+            signals=strategy_plugin_signals,
+            error=strategy_plugin_error,
+        )
+        log_runtime_event(
+            log_context,
+            "health_probe_received",
+            message="Received health probe request",
+            execution_window="probe",
+        )
+        client = composer.build_client()
+        snapshot = fetch_account_snapshot(client, strategy_symbols=MANAGED_SYMBOLS)
+        finalize_runtime_report(
+            report,
+            status="ok",
+            summary={
+                "buying_power": float(snapshot.buying_power or 0.0),
+                "total_equity": float(snapshot.total_equity or 0.0),
+            },
+        )
+        log_runtime_event(
+            log_context,
+            "health_probe_completed",
+            message="Health probe completed",
+            execution_window="probe",
+            buying_power=float(snapshot.buying_power or 0.0),
+            total_equity=float(snapshot.total_equity or 0.0),
+        )
+        return response_body, 200
+    except Exception as exc:
+        if report is not None:
+            append_runtime_report_error(
+                report,
+                stage="health_probe",
+                message=str(exc),
+                error_type=type(exc).__name__,
+            )
+            finalize_runtime_report(report, status="error")
+        if log_context is not None:
+            log_runtime_event(
+                log_context,
+                "health_probe_failed",
+                message="Health probe failed",
+                severity="ERROR",
+                execution_window="probe",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+        error_message = f"{t('health_probe_title')}\n{t('health_probe_error_prefix')}{traceback.format_exc()}"
+        if composer is not None:
+            composer.build_notification_adapters().publish_cycle_notification(
+                detailed_text=error_message,
+                compact_text=error_message,
+            )
+        else:
+            print(error_message, flush=True)
+        return "Error", 500
+    finally:
+        try:
+            if report is not None:
+                report_path = persist_execution_report(report)
+                print(f"execution_report {report_path}", flush=True)
+        except Exception as persist_exc:
+            print(f"failed to persist execution report: {persist_exc}", flush=True)
+
+
+@app.route("/", methods=["POST", "GET"])
+def handle_schwab():
+    return _handle_schwab_cycle()
+
+
+@app.route("/precheck", methods=["POST", "GET"])
+def handle_schwab_precheck():
+    return _handle_schwab_cycle(dry_run_only_override=True, response_body="Precheck OK")
+
+
+@app.route("/probe", methods=["POST", "GET"])
+def handle_schwab_probe():
+    return _handle_schwab_probe()
 
 
 if __name__ == "__main__":

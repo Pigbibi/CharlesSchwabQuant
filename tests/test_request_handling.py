@@ -15,6 +15,9 @@ if str(ROOT) not in sys.path:
 PLATFORM_KIT_SRC = ROOT.parent / "QuantPlatformKit" / "src"
 if str(PLATFORM_KIT_SRC) not in sys.path:
     sys.path.insert(0, str(PLATFORM_KIT_SRC))
+UES_SRC = ROOT.parent / "UsEquityStrategies" / "src"
+if str(UES_SRC) not in sys.path:
+    sys.path.insert(0, str(UES_SRC))
 
 
 def install_stub_modules(strategy_plugin_mounts_json=None, notify_lang="en"):
@@ -178,6 +181,116 @@ class RequestHandlingTests(unittest.TestCase):
         self.assertEqual(body, "OK")
         self.assertTrue(observed["called"])
 
+    def test_handle_schwab_precheck_uses_dry_run_override(self):
+        module = load_module()
+        observed = {"called": False, "dry_run_only_override": None, "events": []}
+
+        module.get_client_from_secret = lambda *args, **kwargs: object()
+        module.is_market_open_today = lambda: True
+        module.load_strategy_plugin_signals = lambda: ((), None)
+        module.attach_strategy_plugin_report = lambda *args, **kwargs: None
+        module.build_execution_report = lambda log_context, **_kwargs: {"status": "pending"}
+        module.persist_execution_report = lambda report, **_kwargs: observed.setdefault("report", dict(report)) or "/tmp/report.json"
+        module.emit_runtime_log = lambda context, event, **fields: observed["events"].append((event, fields))
+
+        def fake_run_strategy_core(client, now_ny, **kwargs):
+            observed["called"] = True
+            observed["dry_run_only_override"] = kwargs.get("dry_run_only_override")
+            self.assertIsNotNone(client)
+            self.assertIsNone(now_ny)
+
+        module.run_strategy_core = fake_run_strategy_core
+
+        with module.app.test_request_context("/precheck", method="POST"):
+            body, status = module.handle_schwab_precheck()
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body, "Precheck OK")
+        self.assertTrue(observed["called"])
+        self.assertTrue(observed["dry_run_only_override"])
+        self.assertEqual(observed["events"][0][0], "strategy_cycle_received")
+        self.assertEqual(observed["events"][0][1]["execution_window"], "precheck")
+
+    def test_handle_schwab_precheck_stays_silent_when_market_closed(self):
+        module = load_module()
+        observed = {"notifications": []}
+
+        module.get_client_from_secret = lambda *args, **kwargs: object()
+        module.is_market_open_today = lambda: False
+        module.load_strategy_plugin_signals = lambda: ((), None)
+        module.attach_strategy_plugin_report = lambda *args, **kwargs: None
+        module.build_execution_report = lambda log_context, **_kwargs: {"status": "pending"}
+        module.persist_execution_report = lambda report, **_kwargs: "/tmp/report.json"
+        module.emit_runtime_log = lambda *args, **kwargs: None
+
+        class FakeNotifications:
+            def publish_cycle_notification(self, *, detailed_text, compact_text):
+                observed["notifications"].append((detailed_text, compact_text))
+
+        class FakeComposer:
+            def build_reporting_adapters(self):
+                return types.SimpleNamespace(
+                    build_log_context=lambda: types.SimpleNamespace(run_id="run-001"),
+                    log_event=lambda *args, **kwargs: None,
+                    persist_execution_report=lambda report: "/tmp/report.json",
+                )
+
+            def build_notification_adapters(self):
+                return FakeNotifications()
+
+            def build_client(self):
+                return object()
+
+        module.build_composer = lambda *, dry_run_only_override=None: FakeComposer()
+
+        with module.app.test_request_context("/precheck", method="POST"):
+            body, status = module.handle_schwab_precheck()
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body, "Market Closed")
+        self.assertEqual(len(observed["notifications"]), 0)
+
+    def test_handle_schwab_probe_checks_account_snapshot_without_notifications(self):
+        module = load_module()
+        observed = {"client_called": False, "snapshot_called": False}
+
+        module.load_strategy_plugin_signals = lambda: ((), None)
+        module.attach_strategy_plugin_report = lambda *args, **kwargs: None
+        module.build_execution_report = lambda log_context, **_kwargs: {"status": "pending"}
+        module.persist_execution_report = lambda report, **_kwargs: observed.setdefault("report", dict(report)) or "/tmp/report.json"
+        module.emit_runtime_log = lambda *args, **kwargs: None
+        module.fetch_account_snapshot = lambda client, *, strategy_symbols=(): observed.__setitem__("snapshot_called", True) or types.SimpleNamespace(
+            buying_power=123.0,
+            total_equity=456.0,
+            positions=(),
+        )
+
+        class FakeComposer:
+            def build_reporting_adapters(self):
+                return types.SimpleNamespace(
+                    build_log_context=lambda: types.SimpleNamespace(run_id="run-001"),
+                    log_event=lambda *args, **kwargs: None,
+                    persist_execution_report=lambda report: "/tmp/report.json",
+                )
+
+            def build_client(self):
+                observed["client_called"] = True
+                return object()
+
+            def build_notification_adapters(self):
+                raise AssertionError("probe success should stay silent")
+
+        module.build_composer = lambda *, dry_run_only_override=None: FakeComposer()
+
+        with module.app.test_request_context("/probe", method="POST"):
+            body, status = module.handle_schwab_probe()
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body, "Probe OK")
+        self.assertTrue(observed["client_called"])
+        self.assertTrue(observed["snapshot_called"])
+        self.assertEqual(observed["report"]["status"], "ok")
+
     def test_handle_schwab_emits_structured_runtime_events(self):
         module = load_module()
         observed = []
@@ -275,7 +388,7 @@ class RequestHandlingTests(unittest.TestCase):
                 lambda report: observed.setdefault("report", report) or "/tmp/report.json"
             )
 
-            def fake_run_strategy_core(client, now_ny, *, strategy_plugin_signals=()):
+            def fake_run_strategy_core(client, now_ny, *, strategy_plugin_signals=(), **_kwargs):
                 observed["signals"] = strategy_plugin_signals
                 self.assertIsNotNone(client)
                 self.assertIsNone(now_ny)
@@ -343,7 +456,7 @@ class RequestHandlingTests(unittest.TestCase):
                 lambda report: observed.setdefault("report", report) or "/tmp/report.json"
             )
 
-            def fake_run_strategy_core(client, now_ny, *, strategy_plugin_signals=()):
+            def fake_run_strategy_core(client, now_ny, *, strategy_plugin_signals=(), **_kwargs):
                 observed["signals"] = strategy_plugin_signals
                 self.assertEqual(len(strategy_plugin_signals), 1)
                 signal = strategy_plugin_signals[0]
@@ -418,7 +531,7 @@ class RequestHandlingTests(unittest.TestCase):
         module.is_market_open_today = lambda: True
         module.persist_execution_report = lambda report: observed.setdefault("report", report) or "/tmp/report.json"
 
-        def fake_run_strategy_core(client, now_ny, *, strategy_plugin_signals=()):
+        def fake_run_strategy_core(client, now_ny, *, strategy_plugin_signals=(), **_kwargs):
             observed["called"] = True
             self.assertEqual(strategy_plugin_signals, ())
 

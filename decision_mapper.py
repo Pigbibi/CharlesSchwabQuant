@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from us_equity_strategies.catalog import resolve_canonical_profile
 from quant_platform_kit.strategy_contracts import (
     StrategyDecision,
     ValueTargetExecutionAnnotations,
@@ -17,10 +18,13 @@ def _resolve_reserved_cash(
     diagnostics: dict[str, Any],
     execution_annotations: dict[str, Any],
     runtime_metadata: dict[str, Any],
+    strategy_profile: str,
 ) -> float:
     base_reserved_cash = float(
         execution_annotations.get("reserved_cash", diagnostics.get("reserved", 0.0)) or 0.0
     )
+    if resolve_canonical_profile(strategy_profile) == "soxl_soxx_trend_income":
+        return base_reserved_cash
     raw_policy = runtime_metadata.get("schwab_execution_policy")
     if not isinstance(raw_policy, dict):
         return base_reserved_cash
@@ -58,6 +62,7 @@ def map_strategy_decision_to_plan(
         diagnostics=diagnostics,
         execution_annotations=execution_annotations,
         runtime_metadata=runtime_metadata,
+        strategy_profile=strategy_profile,
     )
     portfolio_inputs = build_value_target_portfolio_inputs_from_snapshot(snapshot)
     plan = build_value_target_runtime_plan(
