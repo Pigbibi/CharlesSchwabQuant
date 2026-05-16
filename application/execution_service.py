@@ -4,9 +4,35 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from quant_platform_kit.common.cash_sweep import (
-    estimate_cash_sweep_sale_quantity_to_fund_buy,
-)
+try:
+    from quant_platform_kit.common.cash_sweep import should_sell_cash_sweep_to_fund_whole_share_buy
+except ImportError:  # pragma: no cover - compatibility with older pinned shared wheels
+    def should_sell_cash_sweep_to_fund_whole_share_buy(
+        max_quantity,
+        cash_sweep_price,
+        base_buying_power,
+        funding_needs,
+    ):
+        if max_quantity <= 0:
+            return False
+        sweep_price = float(cash_sweep_price or 0.0)
+        if sweep_price <= 0.0:
+            return False
+        current_buying_power = max(0.0, float(base_buying_power or 0.0))
+        sweep_capacity = float(max_quantity) * sweep_price
+        if sweep_capacity <= 0.0:
+            return False
+
+        for underweight_value, ask_price in funding_needs:
+            _ = underweight_value
+            quote_price = float(ask_price or 0.0)
+            if quote_price <= 0.0:
+                continue
+            if current_buying_power >= quote_price:
+                return False
+            if current_buying_power + sweep_capacity >= quote_price:
+                return True
+        return False
 from quant_platform_kit.common.models import OrderIntent
 from quant_platform_kit.common.quantity import format_quantity
 
@@ -187,12 +213,14 @@ def execute_rebalance_cycle(
             )
             for buy_symbol in candidate_symbols
         )
-        return estimate_cash_sweep_sale_quantity_to_fund_buy(
+        if should_sell_cash_sweep_to_fund_whole_share_buy(
             max_quantity,
             cash_sweep_price,
             base_buying_power,
             funding_needs,
-        )
+        ):
+            return int(max_quantity)
+        return 0
 
     sell_order_symbols = tuple(
         allocation.get("risk_symbols", ())
