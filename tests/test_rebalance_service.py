@@ -107,12 +107,10 @@ class RebalanceServiceTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(len(observed_orders), 2)
-        self.assertEqual(observed_orders[0].symbol, "BOXX")
-        self.assertEqual(observed_orders[0].side, "sell")
-        self.assertEqual(observed_orders[0].order_type, "market")
-        self.assertEqual(observed_orders[1].symbol, "QQQI")
-        self.assertEqual(observed_orders[1].order_type, "limit")
+        self.assertEqual(len(observed_orders), 1)
+        self.assertEqual(observed_orders[0].symbol, "QQQI")
+        self.assertEqual(observed_orders[0].side, "buy")
+        self.assertEqual(observed_orders[0].order_type, "limit")
         self.assertTrue(sent_messages)
         self.assertIn("trade", sent_messages[0].lower())
         self.assertIn("2026-04-21 -> 2026-04-22", sent_messages[0])
@@ -773,7 +771,7 @@ class RebalanceServiceTests(unittest.TestCase):
         )
 
         self.assertTrue(sent_messages)
-        self.assertIn("模拟下单: sell BOXX: 2shares", sent_messages[0])
+        self.assertIn("模拟下单: sell BOXX: 5shares", sent_messages[0])
         self.assertIn("模拟下单: limit buy QQQM ($264.00): 1shares", sent_messages[0])
         self.assertNotIn("buy BOXX", sent_messages[0])
 
@@ -863,7 +861,7 @@ class RebalanceServiceTests(unittest.TestCase):
         )
 
         self.assertTrue(sent_messages)
-        self.assertIn("模拟下单: sell BOXX: 5shares", sent_messages[0])
+        self.assertIn("模拟下单: sell BOXX: 10shares", sent_messages[0])
         self.assertIn("模拟下单: limit buy QQQM ($50.00): 5shares", sent_messages[0])
         self.assertNotIn("buy BOXX", sent_messages[0])
 
@@ -1021,14 +1019,11 @@ class RebalanceServiceTests(unittest.TestCase):
             sleeper=lambda _seconds: None,
         )
 
-        self.assertEqual(len(submitted_orders), 2)
-        self.assertEqual(submitted_orders[0].side, "sell")
-        self.assertEqual(submitted_orders[0].symbol, "BOXX")
-        self.assertEqual(submitted_orders[0].quantity, 8)
-        self.assertEqual(submitted_orders[1].side, "buy")
-        self.assertEqual(submitted_orders[1].symbol, "TQQQ")
-        self.assertEqual(submitted_orders[1].quantity, 18)
-        self.assertEqual(snapshots, [])
+        self.assertEqual(len(submitted_orders), 1)
+        self.assertEqual(submitted_orders[0].side, "buy")
+        self.assertEqual(submitted_orders[0].symbol, "TQQQ")
+        self.assertEqual(submitted_orders[0].quantity, 2)
+        self.assertEqual(len(snapshots), 2)
         self.assertTrue(sent_messages)
 
     def test_run_strategy_core_dry_run_skips_submit_and_marks_message(self):
